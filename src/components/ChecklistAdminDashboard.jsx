@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import JSZip from 'jszip'
 import { deleteChecklist, getApiConfig, getChecklist, listChecklists } from '../api/checklistApi'
 import { flatChecklistItems } from '../data/checklistItems'
+import { COPY_SLOTS, getMissingCopySlots } from '../utils/assessmentCopies'
+import { summarizeAdminRecords } from '../utils/adminSummary'
 import { supabase } from '../utils/supabase/client'
 import { ThemeToggle } from './ThemeToggle'
 import { UserMenu } from './UserMenu'
@@ -21,14 +23,34 @@ function isStale(record, staleDays) {
 }
 
 function recordFiles(record) {
-  return Object.entries(record.items ?? {}).flatMap(([itemId, item]) => item.attachment ? [{
-    ...item.attachment,
-    itemId,
-    itemLabel: flatChecklistItems.find((checklistItem) => checklistItem.id === itemId)?.label ?? itemId,
-  }] : [])
+  return Object.entries(record.items ?? {}).flatMap(([itemId, item]) => {
+    const itemLabel = flatChecklistItems.find((checklistItem) => checklistItem.id === itemId)?.label ?? itemId
+    const legacy = item.attachment ? [{ ...item.attachment, itemId, itemLabel: `${itemLabel} (unassigned legacy upload)` }] : []
+    const copies = COPY_SLOTS.flatMap((slot) => item.attachments?.[slot.id] ? [{
+      ...item.attachments[slot.id],
+      itemId,
+      copySlot: slot.id,
+      itemLabel: `${itemLabel} — ${slot.label}`,
+    }] : [])
+    return [...legacy, ...copies]
+  })
 }
 
-export function ChecklistAdminDashboard({ superAdmin = false }) {
+function printSummary(record) {
+  const rows = flatChecklistItems.map((item) => {
+    const state = record.items?.[item.id] ?? {}
+    const attachments = item.marker === 'copies'
+      ? COPY_SLOTS.map(({ id, label }) => `${label}: ${state.attachments?.[id]?.name || 'Missing'}`).join('<br>')
+      : state.attachment?.name || '—'
+    return `<tr><td>${item.order}</td><td>${item.label}</td><td>${state.status || '—'}</td><td>${attachments}</td></tr>`
+  }).join('')
+  const printWindow = window.open('', '_blank', 'width=900,height=700')
+  if (!printWindow) return
+  printWindow.document.write(`<html><head><title>AQAT Checklist ${record.header?.subjectCode || ''}</title><style>body{font-family:Arial,sans-serif;padding:32px;color:#172033}table{width:100%;border-collapse:collapse}th,td{padding:8px;border:1px solid #cbd5e1;text-align:left;vertical-align:top}h1{margin-bottom:4px}.meta{color:#475569;margin-bottom:24px}</style></head><body><h1>AQAT Subject File Checklist</h1><p class="meta">${record.header?.subjectCode || ''} — ${record.header?.subjectName || ''} — ${record.header?.department || ''} — ${record.header?.staffName || ''}</p><table><thead><tr><th>#</th><th>Required document</th><th>Status</th><th>Attachments</th></tr></thead><tbody>${rows}</tbody></table><script>window.onload=()=>{window.print();window.close()}</script></body></html>`)
+  printWindow.document.close()
+}
+
+export function ChecklistAdminDashboard() {
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -60,7 +82,10 @@ export function ChecklistAdminDashboard({ superAdmin = false }) {
 
   const departments = useMemo(() => [...new Set(records.map((record) => record.header?.department).filter(Boolean))].sort(), [records])
   const lecturers = useMemo(() => [...new Set(records.map((record) => record.header?.staffName).filter(Boolean))].sort(), [records])
-  const submittedCount = records.filter((record) => record.status === 'submitted').length
+  const adminSummary = useMemo(() => summarizeAdminRecords(records), [records])
+  const submittedCount = adminSummary.submitted
+  const draftCount = adminSummary.drafts
+  const { latestSubmissions, incompleteSubmissions } = adminSummary
   const filteredRecords = useMemo(() => {
     const query = search.trim().toLowerCase()
     return records
@@ -76,10 +101,7 @@ export function ChecklistAdminDashboard({ superAdmin = false }) {
   }, [records, department, lecturer, status, search, sort])
   const pageCount = Math.max(1, Math.ceil(filteredRecords.length / PAGE_SIZE))
   const visibleRecords = filteredRecords.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
-  const progress = departments.map((name) => {
-    const departmentRecords = records.filter((record) => record.header?.department === name)
-    return { name, total: departmentRecords.length, submitted: departmentRecords.filter((record) => record.status === 'submitted').length }
-  })
+  const progress = adminSummary.departments
 
   const updateSort = (key) => setSort((current) => current.key === key
     ? { key, direction: current.direction === 'asc' ? 'desc' : 'asc' }
@@ -108,7 +130,14 @@ export function ChecklistAdminDashboard({ superAdmin = false }) {
       if (getApiConfig().mode === 'supabase') {
         const { data, error: fileError } = await supabase.from('files').select('*').eq('checklist_id', record.id)
         if (fileError) throw fileError
-        setFiles(data.map((file) => ({ ...file, itemLabel: file.name })))
+        setFiles(data.map((file) => {
+          const legacyItemId = Object.entries(record.items ?? {}).find(([, item]) => item.attachment?.path === file.path)?.[0]
+          const itemId = file.item_id ?? legacyItemId
+          const itemLabel = flatChecklistItems.find((item) => item.id === itemId)?.label ?? file.name
+          const legacyCopySlot = itemId && Object.entries(record.items?.[itemId]?.attachments ?? {}).find(([, attachment]) => attachment?.path === file.path)?.[0]
+          const copySlotLabel = COPY_SLOTS.find((slot) => slot.id === (file.copy_slot ?? legacyCopySlot))?.label
+          return { ...file, itemLabel: copySlotLabel ? `${itemLabel} — ${copySlotLabel}` : itemLabel }
+        }))
         const { data: activity, error: activityError } = await supabase
           .from('activity_logs')
           .select('action, actor_email, created_at')
@@ -184,16 +213,6 @@ export function ChecklistAdminDashboard({ superAdmin = false }) {
       if (blob) zip.file(file.name, blob)
     }
 
-    const printSummary = (record) => {
-      const printWindow = window.open('', '_blank', 'width=900,height=700')
-      if (!printWindow) return
-      const rows = flatChecklistItems.map((item) => {
-        const state = record.items?.[item.id] ?? {}
-        return `<tr><td>${item.order}</td><td>${item.label}</td><td>${state.status || '—'}</td><td>${state.attachment?.name || '—'}</td></tr>`
-      }).join('')
-      printWindow.document.write(`<html><head><title>AQAT Checklist ${record.header?.subjectCode || ''}</title><style>body{font-family:Arial,sans-serif;padding:32px;color:#172033}table{width:100%;border-collapse:collapse}th,td{padding:8px;border:1px solid #cbd5e1;text-align:left}h1{margin-bottom:4px}.meta{color:#475569;margin-bottom:24px}</style></head><body><h1>AQAT Subject File Checklist</h1><p class="meta">${record.header?.subjectCode || ''} — ${record.header?.subjectName || ''} — ${record.header?.department || ''} — ${record.header?.staffName || ''}</p><table><thead><tr><th>#</th><th>Required document</th><th>Status</th><th>Attachment</th></tr></thead><tbody>${rows}</tbody></table><script>window.onload=()=>{window.print();window.close()}</script></body></html>`)
-      printWindow.document.close()
-    }
     const blob = await zip.generateAsync({ type: 'blob' })
     const url = URL.createObjectURL(blob)
     const anchor = document.createElement('a')
@@ -209,13 +228,45 @@ export function ChecklistAdminDashboard({ superAdmin = false }) {
     <main className="app-shell admin-dashboard">
       <header className="page-header">
         <div className="brand-mark">AQAT</div>
-        <div><p className="eyebrow">{superAdmin ? 'System administration' : 'Administration'}</p><h1>{superAdmin ? 'Super Admin Dashboard' : 'Admin Dashboard'}</h1><p>Read-only checklist oversight</p></div>
+        <div><p className="eyebrow">Administration</p><h1>Admin Dashboard</h1><p>Checklist coverage, submissions, and attachments</p></div>
         <div className="header-actions"><DashboardTabs /><UserMenu /><ThemeToggle theme={theme} onToggle={() => setTheme((current) => current === 'dark' ? 'light' : 'dark')} /></div>
       </header>
       {error && <p className="connection-feedback error">{error}</p>}
       <section className="admin-stats">
-        <div className="card"><span>Submitted</span><strong>{submittedCount}/{records.length}</strong></div>
-        <div className="card"><span>Pending</span><strong>{records.length - submittedCount}</strong></div>
+        <div className="card"><span>Total checklists</span><strong>{adminSummary.total}</strong></div>
+        <div className="card"><span>Drafts</span><strong>{draftCount}</strong></div>
+        <div className="card"><span>Submitted</span><strong>{submittedCount}</strong></div>
+        <div className="card"><span>Incomplete submissions</span><strong>{incompleteSubmissions.length}</strong></div>
+      </section>
+      <section className="card submission-summary">
+        <div className="section-heading"><div><p className="eyebrow">Recent activity</p><h2>Latest submissions</h2></div></div>
+        {latestSubmissions.length === 0 ? <p className="required-note">No submissions yet.</p> : (
+          <div className="dashboard-table-wrap">
+            <table className="dashboard-table">
+              <thead><tr><th>Subject code</th><th>Subject name</th><th>Lecturer</th><th>Department</th><th>Submitted</th></tr></thead>
+              <tbody>{latestSubmissions.map((record) => <tr key={record.id}>
+                <td>{record.header?.subjectCode || '—'}</td>
+                <td>{record.header?.subjectName || 'Untitled checklist'}</td>
+                <td>{record.header?.staffName || '—'}</td>
+                <td>{record.header?.department || '—'}</td>
+                <td>{dateTime(record.submittedAt)}</td>
+              </tr>)}</tbody>
+            </table>
+          </div>
+        )}
+      </section>
+      <section className="card missing-submissions">
+        <div className="section-heading"><div><p className="eyebrow">Completeness checks</p><h2>Submissions missing required items</h2></div></div>
+        {incompleteSubmissions.length === 0 ? <p className="required-note">All submitted checklists meet the current item and marked-copy requirements.</p> : incompleteSubmissions.map(({ record, missing }) => (
+          <details className="incomplete-submission" key={record.id}>
+            <summary>{record.header?.subjectCode || 'Uncoded subject'} — {record.header?.staffName || 'Unknown lecturer'} ({missing.length} missing)</summary>
+            <p>{record.header?.department || 'No department recorded'}</p>
+            <ul>{missing.map((item) => <li key={item}>{item}</li>)}</ul>
+          </details>
+        ))}
+      </section>
+      <section className="admin-stats">
+        <div className="card"><span>Submitted coverage</span><strong>{adminSummary.coveragePercent}%</strong></div>
         <div className="card"><span>Stale threshold</span><label><input type="number" min="1" value={staleDays} onChange={(event) => setStaleDays(Number(event.target.value) || DEFAULT_STALE_DAYS)} /> days</label></div>
       </section>
       <section className="card department-progress">
@@ -237,7 +288,7 @@ export function ChecklistAdminDashboard({ superAdmin = false }) {
                 {[['subjectCode', 'Subject code'], ['subjectName', 'Subject name'], ['department', 'Department'], ['staffName', 'Lecturer'], ['status', 'Status'], ['submittedAt', 'Submitted'], ['updatedAt', 'Last updated']].map(([key, label]) => (
                   <th key={key}><button type="button" className="table-sort" onClick={() => updateSort(key)}>{label} {sort.key === key ? (sort.direction === 'asc' ? '↑' : '↓') : ''}</button></th>
                 ))}
-                {superAdmin && <th>Files</th>}
+                <th>Files</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -251,7 +302,7 @@ export function ChecklistAdminDashboard({ superAdmin = false }) {
                   <td><span className={`status-badge ${record.status}`}>{statusLabel(record.status)}</span>{isStale(record, staleDays) && <span className="stale-badge">Stale</span>}</td>
                   <td>{dateTime(record.submittedAt)}</td>
                   <td>{dateTime(record.updatedAt)}</td>
-                  {superAdmin && <td><button className="secondary-button" type="button" onClick={() => openFiles(record)}>View files</button></td>}
+                  <td><button className="secondary-button" type="button" onClick={() => openFiles(record)}>View files</button></td>
                   <td><button className="delete-button" type="button" onClick={() => handleDelete(record)}>Delete</button></td>
                 </tr>
               ))}
@@ -260,7 +311,7 @@ export function ChecklistAdminDashboard({ superAdmin = false }) {
         </div>
         <div className="pagination"><span>{filteredRecords.length} checklist(s)</span><div><button className="secondary-button" disabled={page === 1} onClick={() => setPage((current) => current - 1)}>Previous</button><span>Page {page} of {pageCount}</span><button className="secondary-button" disabled={page === pageCount} onClick={() => setPage((current) => current + 1)}>Next</button></div></div>
       </section>
-      {superAdmin && selected && <FilePanel record={selected} files={files} loading={filesLoading} onClose={() => setSelected(null)} onDownload={downloadFile} onDownloadAll={downloadAll} onPrint={() => printSummary(selected)} />}
+      {selected && <FilePanel record={selected} files={files} loading={filesLoading} onClose={() => setSelected(null)} onDownload={downloadFile} onDownloadAll={downloadAll} onPrint={() => printSummary(selected)} />}
     </main>
   )
 }

@@ -56,14 +56,17 @@ For Netlify, create a new site from the project repository and set:
 
 The deployed site works immediately in Local storage mode. To use a department API, open the gear icon in the app and enter its URL and authentication settings. That API must expose the endpoints used by `src/api/checklistApi.js` and allow requests from the deployed site's origin.
 
-When `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` are configured, Supabase is the default data source for new browsers. Checklist and attachment requests go directly from the browser Supabase client using the signed-in user's session, so database and Storage RLS policies authorize them. The Express server is only a health check and does not write checklist or file data. The sign-in page includes self-service sign-up. New Supabase accounts receive the `user` role through the `profiles` trigger; promote trusted accounts to `admin` or `super_admin` directly in `public.profiles` rather than from the browser. Apply reviewed migrations before using existing Auth users.
+When `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` are configured, Supabase is the default data source for new browsers. Checklist and attachment requests go directly from the browser Supabase client using the signed-in user's session, so database and Storage RLS policies authorize them. The Express server is only a health check and does not write checklist or file data. The sign-in page separates Staff and Admin portals, but the selected portal never grants access: `public.profiles.role` is checked after authentication. New accounts always receive the `staff` role. Promote trusted accounts to `admin` through the database; profile role updates are not available to authenticated clients.
 
 ## Dashboard access
 
-The header includes role-aware tabs for **Checklists**, **Admin**, and **Super Admin**. Admin tabs are only shown after sign-in:
+Staff and Admin have separate dashboards and protected route namespaces:
 
-- `user` can access Checklists.
-- `admin` can access Checklists and Admin.
-- `super_admin` can access all three tabs.
+- `staff` can access `/staff/*`, manage their own drafts, and submit checklists.
+- `admin` can access `/admin/*`, review all submissions, export data, view/print/download files, and delete any checklist.
 
-In Local storage mode, choose the role on the sign-in form for testing. In Supabase mode, roles come from `public.profiles.role`; the route guards enforce the same permissions even if a protected URL is entered directly.
+The Admin portal requires Supabase authentication. Local mode is staff-only because it has no trusted database role. Route guards redirect an authenticated user to their own portal, and a portal/account mismatch signs the user out.
+
+Each marked assessment requires separate **Lowest mark**, **Median mark**, and **Highest mark** uploads. The submit action and a database trigger both enforce these slots. Existing unlabelled uploads are retained but do not satisfy a labelled slot.
+
+Apply reviewed migrations before using the current role and attachment schema. The current forward migration is `supabase/migrations/20261004033606_consolidate_staff_admin_roles_and_copy_slots.sql`.

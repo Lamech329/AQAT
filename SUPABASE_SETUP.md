@@ -45,10 +45,11 @@ updated_at     | timestamptz | Auto-set on creation
 **data.header contains:**
 - department, staffName, subjectName, subjectCode, semester, year
 
-**data.items contains:** (object mapping item ID → {status, comments, attachment})
+**data.items contains:** (object mapping item ID → {status, comments, attachment, attachments})
 - status: 'yes' | 'no' | 'na' | ''
+- `attachment`: legacy unlabelled attachment retained for existing records
+- `attachments`: for marked assessments, separate `lowest`, `median`, and `highest` attachments
 - comments: string
-- attachment: { name, type, size, path, uploadedAt }
 
 **data.footer contains:**
 - reviewerComments, additionalNotes
@@ -60,6 +61,8 @@ Column         | Type        | Notes
 id             | uuid        | Primary key
 checklist_id   | uuid        | Foreign key to checklists(id)
 path           | text        | Storage path in 'aqat-attachments' bucket
+item_id        | text        | Checklist item ID for this upload
+copy_slot      | text        | lowest, median, or highest for marked assessments
 name           | text        | Original filename
 content_type   | text        | MIME type
 size           | int8        | File size in bytes
@@ -67,20 +70,22 @@ uploaded_by    | uuid        | References auth.users(id)
 uploaded_at    | timestamptz | Auto-set on creation
 ```
 
-## Row-Level Security (RLS) Policies
+## Roles and Row-Level Security (RLS)
 
-All policies ensure users can only access their own checklists:
+The only application roles are `staff` and `admin`. New profiles default to `staff`; creating an account through the app cannot grant Admin access. Promote a trusted account through a controlled database action. Authenticated clients can read their own profile but cannot update profiles or roles.
 
 **checklists table:**
-- SELECT: `owner = auth.uid()`
+- SELECT: `owner = auth.uid()`; Admin can view all checklists
 - INSERT: `owner = auth.uid()`
 - UPDATE: `owner = auth.uid()` (both USING and WITH CHECK)
-- DELETE: `owner = auth.uid()`
+- DELETE: owner can delete only their own `draft`; Admin can delete any checklist
 
 **files table:**
 - SELECT: Parent checklist owner = auth.uid()
 - INSERT: Parent checklist owner = auth.uid() AND uploaded_by = auth.uid()
-- DELETE: Parent checklist owner = auth.uid()
+- DELETE: owner can delete file metadata for their own drafts; Admin can delete any file metadata
+
+Storage policies separately authorize attachment access. Submission is rejected by a database trigger unless all three labelled copy slots exist for every marked assessment (`4`, `5`, `6`, `7`, and `9` in the current checklist catalog). Each slot must have a corresponding `files` metadata row and a Storage object. This supplements UI validation and does not rely on client-side checks.
 
 ## Setup Steps
 
@@ -91,28 +96,18 @@ All policies ensure users can only access their own checklists:
 3. Set the bucket to **Private** (RLS is handled by policies)
 4. Click Create
 
-### Step 2: Apply the Migration
+### Step 2: Review and Apply the Migrations
 
-**Option A: Using Supabase CLI (Recommended)**
+Review all pending migrations and their SQL before applying them to a linked project. The current role/copy-slot migration converts existing profiles, updates the profile constraint and Admin policies, adds file item/slot metadata, and installs the submit validation trigger.
 
 ```bash
-# Navigate to project directory
-cd C:\Users\lamec\Desktop\aqat
-
-# Link to your Supabase project (if not already done)
-supabase link --project-ref qiarhrcankopijakeifr
-
-# Push the migration to your Supabase project
-supabase db push
+supabase migration list --linked
+supabase db push --linked --dry-run
+# After review and approval:
+supabase db push --linked
 ```
 
-**Option B: Using Supabase Dashboard SQL Editor (Manual)**
-
-1. Go to Supabase Dashboard → SQL Editor
-2. Create a new query
-3. Copy the entire contents of `supabase/migrations/20260907125400_create_checklist_tables.sql`
-4. Paste it into the SQL Editor
-5. Click "Run"
+Do not apply a migration to production until its SQL has been reviewed and approved.
 
 ### Step 3: Verify the Setup
 
@@ -125,9 +120,9 @@ In Supabase Dashboard:
 
 2. **Check RLS Policies:**
    - Click on `checklists` table → Policies tab
-   - Should see 4 policies (select, insert, update, delete)
+   - Confirm operation-specific owner policies and Admin read/delete policies
    - Click on `files` table → Policies tab
-   - Should see 3 policies (select, insert, delete)
+   - Confirm owner/Admin operation-specific policies
 
 3. **Check Indexes:**
    - Click on `checklists` table → Indexes tab
@@ -144,7 +139,7 @@ In Supabase Dashboard:
    - If using Supabase mode and not yet signed in, you'll see a login screen
    - Sign in with your Supabase Auth email/password
    - The "Test Connection" button should show: "Connected to Supabase."
-5. **Create a new checklist** to test the full flow
+5. **Create a new checklist** to test the full flow. The Admin portal requires Supabase authentication; Local mode is staff-only.
 
 ## Environment Variables
 
@@ -172,7 +167,7 @@ When mode is set to `supabase`, the app:
 2. Queries checklists owned by the authenticated user
 3. Uploads files to the `aqat-attachments` storage bucket
 4. Tracks files in the `files` database table
-5. Respects RLS policies (users only see their data)
+5. Respects RLS policies (staff see their data; Admin reviews all records)
 
 ## Troubleshooting
 
@@ -199,6 +194,8 @@ When mode is set to `supabase`, the app:
 - The browser never uses a service-role key
 - All data access is controlled by RLS policies
 - Users can only see/edit their own checklists
+- Owners can delete only their own draft checklists; Admin can delete any checklist
+- Profile role changes are not available to authenticated clients
 - File uploads are restricted by RLS
 - Email verification is required (default Supabase Auth behavior)
 
@@ -215,11 +212,12 @@ After setup:
 2. Test file uploads
 3. Verify data persists after page refresh
 4. Test switching between `local` and `supabase` modes
-5. Check that submitted checklists show in the list
+5. Verify Staff/Admin portal mismatch rejection
+6. Verify submission is blocked until each marked assessment has lowest-, median-, and highest-mark files
 
 For production:
 - Configure email verification settings in Supabase Auth
-- Set up appropriate user roles/RBAC if needed
+- Promote trusted Staff accounts to Admin directly through the database
 - Monitor database usage in Supabase dashboard
 - Set up backups
 - Test disaster recovery procedures

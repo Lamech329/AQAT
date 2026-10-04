@@ -19,9 +19,9 @@ export function Checklist({ items, itemState, headerComplete, readOnly, onStatus
         disabled={disabled}
         readOnly={readOnly}
         onStatusChange={(status) => onStatusChange(item.id, status)}
-        onFileChange={(file) => onFileChange(item.id, file)}
+        onFileChange={(file, copySlot) => onFileChange(item.id, file, copySlot)}
         onCommentChange={(comments) => onCommentChange(item.id, comments)}
-        onRemoveAttachment={onRemoveAttachment}
+        onRemoveAttachment={(itemId, attachment, copySlot) => onRemoveAttachment(itemId, attachment, copySlot)}
       />
     )
   })

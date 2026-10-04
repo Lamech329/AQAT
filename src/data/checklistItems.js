@@ -28,6 +28,10 @@ export const flatChecklistItems = checklistItems.flatMap((item) => [
   ...(item.children ?? []),
 ])
 
+export const markedAssessmentIds = flatChecklistItems
+  .filter((item) => item.marker === 'copies')
+  .map((item) => item.id)
+
 export const markerLabels = {
   copies: '3 copies required',
   ifAvailable: 'if available',

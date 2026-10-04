@@ -1,154 +1,47 @@
 # AQAT Project Progress Report
 
-**Report date:** 2026-09-08  
-**Project:** AQAT Subject File Checklist  
-**Repository status:** The workspace is not currently a Git repository, so commit history and change attribution were not available for this report.
+**Report date:** 2026-10-04
 
-> **Current-status note (2026-09-27):** The details below describe the earlier project state and are superseded where they conflict with the verification update at the end. Checklist and file data now use the authenticated browser Supabase client; the Express server is health-check-only. The new RLS cleanup migration has not been applied.
+## Current architecture
 
-## Executive Summary
+- The active UI is the React/Vite application in `src/`.
+- Checklist, profile, file metadata, and attachment operations use the signed-in browser Supabase client and are authorized by database and Storage RLS.
+- The optional Express server is health-check-only; it does not handle checklist or file data.
+- Local storage mode remains available for staff workflows. The Admin portal requires Supabase authentication.
 
-The main AQAT checklist frontend is implemented as a React/Vite application and currently produces a successful production build. The application supports checklist creation, editing, completion tracking, submission, reopening, summaries, themes, attachments, and multiple data-storage modes.
+## Roles and access
 
-The local-storage workflow is the most complete and lowest-dependency path. Supabase persistence and authentication scaffolding are present, but the full hosted integration has not been verified end to end. The optional Express backend is present but currently fails its TypeScript build and requires additional security and integration work before deployment.
+The application uses two roles: `staff` and `admin`. The login portal selector only selects a sign-in view. Supabase authentication reads `public.profiles.role`; a mismatch signs the user out. New accounts are staff by default, and authenticated users cannot update their own profile role. `/staff/*` and `/admin/*` are protected by role-specific route guards.
 
-## Current Implementation
+The forward migration `supabase/migrations/20261004033606_consolidate_staff_admin_roles_and_copy_slots.sql` converts existing profile roles, changes the role constraint/default, updates role-gated RLS policies, adds labelled file metadata, and installs the submit-validation trigger. It revokes profile write privileges from client roles. The migration was reviewed, approved, and applied to the linked Supabase project on 2026-10-04.
 
-### Frontend
+## Checklist workflow
 
-The active application is under `src/` and is started with Vite.
+Staff can create, edit, and delete their own draft checklists, view submissions, and print summaries. Admin can review all checklists, filter and export CSV, inspect/download/print attachments, and delete any checklist. Owners remain restricted to deleting their own drafts.
 
-Implemented user flows include:
+Marked assessments are currently checklist items `4`, `5`, `6`, `7`, and `9`. Each requires a separate lowest-, median-, and highest-mark attachment. Existing one-per-item uploads remain preserved as unassigned legacy files and do not satisfy a labelled slot. The UI shows slot status/progress and missing slots; a database trigger prevents submission without all required file metadata and corresponding Storage objects.
 
-- Dashboard listing saved checklists.
-- Creating a new checklist.
-- Editing subject and staff details.
-- Completing 13 checklist requirements, including nested requirements `13a` and `13b`.
-- Requirement statuses for yes, no, not applicable, or unresolved.
-- Comments and footer notes.
-- File attachment selection.
-- Draft and submitted states.
-- Reopening submitted checklists for editing.
-- Summary view and browser printing.
-- Light and dark theme selection persisted in local storage.
-- Settings panel for selecting a data source and testing connectivity.
+## Documentation
 
-### Data and API Layer
+The role and workflow documentation is maintained in `README.md`, `SUPABASE_SETUP.md`, and `QUICK_START.md`. This report summarizes the current implementation state.
 
-`src/api/checklistApi.js` supports three configured modes:
+## Validation status
 
-- **Local:** checklist records are stored in browser local storage.
-- **Remote:** requests are sent to a configured REST API.
-- **Supabase:** records are stored in Supabase tables and files are uploaded to Supabase Storage.
+- Frontend production build: passed after the role, route, staff dashboard, marked-copy, and Admin summary changes.
+- Backend TypeScript build: passed.
+- `npm test`: passed (4 role-routing, copy-slot, and Admin summary regression tests).
+- Linked database checks passed for draft-only owner deletes, Admin deletes, role-update denial, incomplete-submit rejection, and Admin visibility. The SQL checks ran in rollback transactions; no test accounts, checklist rows, file rows, or Storage objects remain.
+- The `supabase test db --linked` pgTAP runner could not start because Docker/Podman is unavailable. The direct linked SQL verification completed successfully; the Node regression tests cover role routing/mismatch, copy-slot rules, and Admin summary aggregation.
 
-The API layer also migrates the previous single-record local-storage format into the current multi-record format.
+## Validation status
 
-### Supabase Integration
+- Frontend production build: passed.
+- Backend TypeScript build: passed.
+- `npm test`: passed (4 role-routing, copy-slot, and Admin summary regression tests).
+- `git diff --check`: passed.
+- The frontend build reports the existing advisory that its minified JavaScript chunk exceeds 500 kB; the build succeeds.
 
-The project includes:
+## Remaining verification
 
-- Supabase browser client configuration.
-- Email/password authentication UI in `src/components/AuthGate.jsx`.
-- A database migration for `checklists` and `files`.
-- Row-level security policies for checklist and file metadata ownership.
-- Indexes and an `updated_at` trigger.
-- Setup, deployment, and migration documentation.
-
-### Optional Backend
-
-The `server/` directory contains an Express/TypeScript API with routes for:
-
-- Listing checklists.
-- Fetching a checklist.
-- Creating a checklist.
-- Updating headers, items, and footer data.
-- Uploading files.
-- Submitting and reopening checklists.
-- Health checking through `/ping`.
-
-The backend uses Supabase as its persistence layer.
-
-## Validation Status
-
-### Passing Checks
-
-- Main application production build passes with `npm run build`.
-- TypeScript checking for the main application passes.
-- Vite production bundle generation passes.
-- Workspace diagnostics reported no frontend errors.
-- No automated test files were found in the workspace.
-
-### Failing Checks
-
-The optional backend build fails with two TypeScript errors in `server/src/routes/checklists.ts`:
-
-- The `a` parameter in the checklist sort callback has an implicit `any` type.
-- The `b` parameter in the checklist sort callback has an implicit `any` type.
-
-The backend therefore cannot currently be treated as build-ready.
-
-### Not Yet Verified
-
-The following require a configured Supabase project and runtime testing:
-
-- Applying the database migration.
-- Creating the required Storage bucket.
-- User registration and email confirmation.
-- Authenticated checklist creation and retrieval.
-- RLS isolation between users.
-- Supabase file upload and metadata persistence.
-- Persistence after refresh and sign-in changes.
-- Deployment to a static host.
-
-## Known Issues and Risks
-
-### 1. Local mode and authentication behavior conflict
-
-`src/main.jsx` always wraps the application in `AuthGate`. This means authentication can be required even when the selected data source is local storage, while the project documentation describes local mode as usable without a backend.
-
-The intended behavior should be clarified and implemented consistently, either by making authentication conditional on Supabase mode or by updating the local-mode documentation and user flow.
-
-### 2. Supabase Storage bucket names are inconsistent
-
-The browser API uses the bucket name `aqat-attachments`, while the migration documentation and Express backend use `checklist-files`.
-
-These names must be standardized before Supabase attachment uploads can be considered ready.
-
-### 3. Backend request security is incomplete
-
-The Express backend currently enables broad CORS and does not show request authentication middleware. The database migration has RLS policies, but requests passing through the backend must also establish and forward an authenticated user context, or the backend may not provide the intended tenant isolation.
-
-### 4. Multiple application paths exist
-
-The workspace contains the active Vite app, an optional Express backend, a placeholder Next.js page under `app/`, and several examples. The active deployment path should be documented clearly, and unused scaffolding should either be maintained intentionally or removed later.
-
-### 5. No automated regression coverage
-
-There are no discovered unit, integration, or end-to-end test files. Important behaviors such as local persistence, submission validation, reopen behavior, API mapping, RLS, and file uploads currently depend on manual verification.
-
-## Recommended Next Steps
-
-1. Fix the two backend TypeScript errors and rerun the backend build.
-2. Choose one Supabase Storage bucket name and update code and documentation consistently.
-3. Decide whether local mode should bypass authentication; align `AuthGate`, settings, and documentation.
-4. Add focused tests for checklist creation, local persistence, submission/reopening, and API transformations.
-5. Configure Supabase and perform an authenticated end-to-end test, including file upload and cross-user access checks.
-6. Add authentication and authorization handling to the Express backend before exposing it outside a trusted environment.
-7. Document the single supported production deployment path and classify the remaining example/placeholder directories.
-
-## Overall Assessment
-
-**Frontend:** Functionally advanced and buildable.  
-**Local storage mode:** Closest to ready for practical use.  
-**Supabase mode:** Structurally implemented but not fully runtime-verified; attachment configuration must be corrected.  
-**Express backend:** Incomplete; currently blocked by TypeScript errors and requiring security review.  
-**Testing:** Minimal; automated coverage is currently absent.
-
-## Verification Update — 2026-09-27
-
-- Checklist and file reads/writes now use the authenticated browser Supabase client. The Express server no longer exposes checklist/file routes or creates a Supabase client with a potentially privileged key.
-- Checklist inserts provide the signed-in user's `owner` because the migration defines it as `NOT NULL` without a default and the insert `WITH CHECK` requires `auth.uid() = owner`. File metadata inserts provide `uploaded_by` because its `WITH CHECK` requires `auth.uid() = uploaded_by`.
-- The linked database showed two exact duplicate checklist `ALL` policies: `"Checklists owner can manage"` (`public`) and `checklists_owner_manage` (`authenticated`), both with `owner = auth.uid()` for `USING` and `WITH CHECK`. The `public` policy also targets unauthenticated requests and is removed by the new cleanup migration.
-- The file `ALL` policies were not duplicates: `"Files owner can manage"` checks `uploaded_by = auth.uid()`, while `files_owner_manage` checks ownership of the parent checklist. Their permissive combination broadened writes, so both are removed in favor of the existing operation-specific file policies.
-- The new RLS cleanup migration is intentionally unapplied pending review. No production policy was changed by this work.
-- The frontend and backend builds pass. Supabase Auth requires email confirmation, so an authenticated non-admin write test is pending a test account with a reachable confirmation inbox.
+- No authenticated browser end-to-end test was run for portal mismatch/sign-out or route redirects. Role selection/redirect helpers are covered by Node tests, and the route guards and sign-out logic are implemented in the frontend.
+- Do not commit until explicitly requested.

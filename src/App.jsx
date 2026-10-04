@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import {
   createChecklist,
@@ -28,7 +28,9 @@ import { UserMenu } from './components/UserMenu'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import Login from './pages/Login'
 import AdminDashboard from './pages/AdminDashboard'
-import SuperAdminDashboard from './pages/SuperAdminDashboard'
+import { useAuth } from './context/AuthContext'
+import { dashboardPath } from './auth/roles'
+import { getMissingCopySlots } from './utils/assessmentCopies'
 import './style.css'
 
 const THEME_STORAGE_KEY = 'aqat-theme'
@@ -41,13 +43,21 @@ const getInitialTheme = () => {
 
 function ChecklistWorkspace() {
   const [checklist, setChecklist] = useState(emptyChecklist)
+  const checklistRef = useRef(checklist)
+  checklistRef.current = checklist
   const [checklists, setChecklists] = useState([])
   const [view, setView] = useState('dashboard')
   const [loaded, setLoaded] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState('')
   const [theme, setTheme] = useState(getInitialTheme)
   const [apiConfig, setApiConfig] = useState(getApiConfig)
   const [settingsOpen, setSettingsOpen] = useState(false)
+
+  const setChecklistRecord = (record) => {
+    checklistRef.current = record
+    setChecklist(record)
+  }
 
   const toggleTheme = () => setTheme((current) => current === 'dark' ? 'light' : 'dark')
 
@@ -70,12 +80,13 @@ function ChecklistWorkspace() {
     [checklist.header],
   )
   const allResolved = flatChecklistItems.every((item) => Boolean(checklist.items[item.id]?.status))
-  const canSubmit = headerComplete && allResolved && checklist.status === 'draft'
+  const missingCopySlots = useMemo(() => getMissingCopySlots(checklist.items), [checklist.items])
+  const canSubmit = headerComplete && allResolved && missingCopySlots.length === 0 && checklist.status === 'draft'
 
   const openRecord = async (id, nextView) => {
     const record = await getChecklist(id)
     if (!record) return
-    setChecklist(record)
+    setChecklistRecord(record)
     setView(nextView)
 
     if (nextView === 'editor') {
@@ -87,67 +98,92 @@ function ChecklistWorkspace() {
   }
 
   const startNewChecklist = () => {
-    setChecklist(emptyChecklist())
+    setChecklistRecord(emptyChecklist())
     setView('editor')
   }
 
   const updateHeader = (name, value) => {
-    setChecklist((current) => {
-      const header = { ...current.header, [name]: value }
-      if (!current.id) {
-        const newRecord = { ...current, id: createChecklistId(), header }
-        createChecklist(newRecord)
-        return newRecord
-      }
-      saveHeader(current.id, header)
-      return { ...current, header }
-    })
+    const current = checklistRef.current
+    const header = { ...current.header, [name]: value }
+    if (!current.id) {
+      const newRecord = { ...current, id: createChecklistId(), header }
+      setChecklistRecord(newRecord)
+      createChecklist(newRecord)
+      return
+    }
+    setChecklistRecord({ ...current, header })
+    saveHeader(current.id, header)
   }
 
   const updateItem = (itemId, changes) => {
-    const item = { ...(checklist.items[itemId] ?? {}), ...changes }
-    setChecklist((current) => ({
-      ...current,
-      items: { ...current.items, [itemId]: item },
-    }))
-    saveItem(checklist.id, itemId, item)
+    const current = checklistRef.current
+    const item = { ...(current.items[itemId] ?? {}), ...changes }
+    setChecklistRecord({ ...current, items: { ...current.items, [itemId]: item } })
+    saveItem(current.id, itemId, item)
   }
 
-  const handleFileChange = async (itemId, file) => {
+  const handleFileChange = async (itemId, file, copySlot = null) => {
     if (!file) return
-    const attachment = await uploadFile(checklist.id, file)
-    updateItem(itemId, { attachment })
+    try {
+      const current = checklistRef.current
+      const attachment = await uploadFile(current.id, file, itemId, copySlot)
+      const currentItem = checklistRef.current.items[itemId] ?? {}
+      const changes = copySlot
+        ? { attachments: { ...(currentItem.attachments ?? {}), [copySlot]: attachment } }
+        : { attachment }
+      const item = { ...currentItem, ...changes }
+      const updatedChecklist = { ...checklistRef.current, items: { ...checklistRef.current.items, [itemId]: item } }
+      setChecklistRecord(updatedChecklist)
+      await saveItem(updatedChecklist.id, itemId, item)
+    } catch (error) {
+      setSubmitError(error.message ?? 'Unable to save attachment.')
+    }
   }
 
-  const handleRemoveAttachment = async (itemId, attachment) => {
+  const handleRemoveAttachment = async (itemId, attachment, copySlot = null) => {
     if (!attachment) return
     try {
       if (attachment.path) {
         await removeAttachment(checklist.id, attachment.path)
       }
-      updateItem(itemId, { attachment: null })
+      const current = checklistRef.current
+      const currentItem = current.items[itemId] ?? {}
+      const changes = copySlot
+        ? { attachments: { ...(currentItem.attachments ?? {}), [copySlot]: null } }
+        : { attachment: null }
+      const item = { ...currentItem, ...changes }
+      const updatedChecklist = { ...current, items: { ...current.items, [itemId]: item } }
+      setChecklistRecord(updatedChecklist)
+      await saveItem(updatedChecklist.id, itemId, item)
     } catch (err) {
       alert(`Failed to remove attachment: ${err.message}`)
     }
   }
 
   const updateFooter = (name, value) => {
-    const footer = { ...checklist.footer, [name]: value }
-    setChecklist((current) => ({ ...current, footer }))
-    if (checklist.id) saveFooter(checklist.id, footer)
+    const current = checklistRef.current
+    const footer = { ...current.footer, [name]: value }
+    setChecklistRecord({ ...current, footer })
+    if (current.id) saveFooter(current.id, footer)
   }
 
   const handleSubmit = async () => {
+    setSubmitError('')
     setSubmitting(true)
-    const submitted = await submitChecklist(checklist.id)
-    setChecklist(submitted)
-    setSubmitting(false)
-    setView('summary')
+    try {
+      const submitted = await submitChecklist(checklist.id)
+      setChecklistRecord(submitted)
+      setView('summary')
+    } catch (error) {
+      setSubmitError(error.message ?? 'Unable to submit checklist.')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   const handleEdit = async () => {
     const reopened = await reopenChecklist(checklist.id)
-    setChecklist(reopened)
+    setChecklistRecord(reopened)
     setView('editor')
   }
 
@@ -168,7 +204,7 @@ function ChecklistWorkspace() {
     const record = await getChecklist(id)
     if (!record) return
     const reopened = await reopenChecklist(id)
-    setChecklist(reopened)
+    setChecklistRecord(reopened)
     setView('editor')
   }
 
@@ -248,7 +284,13 @@ function ChecklistWorkspace() {
       />
       <FooterComments footer={checklist.footer} onChange={updateFooter} />
       <div className="submit-row">
-        <p>{canSubmit ? 'All requirements are resolved. Your checklist is ready to submit.' : 'Resolve every checklist requirement before submitting.'}</p>
+        <div>
+          <p>{canSubmit ? 'All requirements and marked-assessment copies are ready to submit.' : 'Resolve every checklist requirement and add all marked-assessment copies before submitting.'}</p>
+          {missingCopySlots.length > 0 && <ul className="missing-copy-list">{missingCopySlots.map(({ assessmentId, assessmentLabel, label }) => (
+            <li key={`${assessmentId}-${label}`}>{assessmentLabel}: {label} copy missing</li>
+          ))}</ul>}
+          {submitError && <p className="connection-feedback error">{submitError}</p>}
+        </div>
         <div className="submit-row-actions">
           {checklist.status === 'draft' && (
             <button className="delete-button" onClick={handleDelete}>Delete Draft</button>
@@ -264,13 +306,14 @@ function ChecklistWorkspace() {
 }
 
 export default function App() {
+  const { currentRole, isAuthenticated, loading } = useAuth()
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
-      <Route path="/admin" element={<ProtectedRoute allowedRoles={['admin', 'super_admin']}><AdminDashboard /></ProtectedRoute>} />
-      <Route path="/super-admin" element={<ProtectedRoute allowedRoles={['super_admin']}><SuperAdminDashboard /></ProtectedRoute>} />
-      <Route path="/" element={<ChecklistWorkspace />} />
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="/admin/*" element={<ProtectedRoute allowedRoles={['admin']}><AdminDashboard /></ProtectedRoute>} />
+      <Route path="/staff/*" element={<ProtectedRoute allowedRoles={['staff']}><ChecklistWorkspace /></ProtectedRoute>} />
+      <Route path="/" element={loading ? <main className="app-shell loading">Loading your account...</main> : <Navigate to={isAuthenticated ? dashboardPath(currentRole) : '/login'} replace />} />
+      <Route path="*" element={loading ? <main className="app-shell loading">Loading your account...</main> : <Navigate to={isAuthenticated ? dashboardPath(currentRole) : '/login'} replace />} />
     </Routes>
   )
 }

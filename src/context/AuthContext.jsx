@@ -1,14 +1,12 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import { getApiConfig } from '../api/checklistApi'
 import { supabase } from '../utils/supabase/client'
+import { normalizeRole, portalMismatchMessage } from '../auth/roles'
 
 const LOCAL_AUTH_KEY = 'aqat-auth-user'
-const DEFAULT_ROLE = 'user'
-const VALID_ROLES = ['user', 'admin', 'super_admin']
+const DEFAULT_ROLE = 'staff'
 
 const AuthContext = createContext(null)
-
-const normalizeRole = (role) => VALID_ROLES.includes(role) ? role : DEFAULT_ROLE
 
 export function AuthProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(null)
@@ -17,11 +15,15 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     let mounted = true
+    let authRevision = 0
 
     const loadUser = async () => {
       if (!isSupabaseMode) {
         const savedUser = localStorage.getItem(LOCAL_AUTH_KEY)
-        if (mounted && savedUser) setCurrentUser(JSON.parse(savedUser))
+        if (mounted && savedUser) {
+          const { id, email } = JSON.parse(savedUser)
+          setCurrentUser({ id, email, role: DEFAULT_ROLE })
+        }
         if (mounted) setLoading(false)
         return
       }
@@ -30,7 +32,7 @@ export function AuthProvider({ children }) {
       if (sessionError) throw sessionError
       if (sessionData.session?.user) {
         const user = await userWithRole(sessionData.session.user)
-        if (mounted) setCurrentUser(user)
+        if (mounted && authRevision === 0) setCurrentUser(user)
       }
       if (mounted) setLoading(false)
     }
@@ -43,8 +45,19 @@ export function AuthProvider({ children }) {
     if (!isSupabaseMode) return () => { mounted = false }
 
     const { data: listener } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      const revision = ++authRevision
       if (!mounted) return
-      setCurrentUser(session?.user ? await userWithRole(session.user) : null)
+      if (!session?.user) {
+        setCurrentUser(null)
+        return
+      }
+      try {
+        const user = await userWithRole(session.user)
+        if (mounted && revision === authRevision) setCurrentUser(user)
+      } catch (error) {
+        console.error('Unable to load the authenticated profile.', error)
+        if (mounted && revision === authRevision) setCurrentUser(null)
+      }
     })
 
     return () => {
@@ -53,16 +66,24 @@ export function AuthProvider({ children }) {
     }
   }, [isSupabaseMode])
 
-  const login = async (email, password, role = DEFAULT_ROLE) => {
+  const login = async (email, password, portal = DEFAULT_ROLE) => {
     if (isSupabaseMode) {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password })
       if (error) throw error
       const user = await userWithRole(data.user)
+      const mismatch = portalMismatchMessage(portal, user.role)
+      if (mismatch) {
+        const { error: signOutError } = await supabase.auth.signOut()
+        setCurrentUser(null)
+        if (signOutError) throw new Error(`${mismatch} Sign-out failed: ${signOutError.message}`)
+        throw new Error(mismatch)
+      }
       setCurrentUser(user)
       return user
     }
 
-    const user = { id: `local-${Date.now()}`, email, role: normalizeRole(role) }
+    if (portal === 'admin') throw new Error('Admin sign-in requires Supabase authentication.')
+    const user = { id: `local-${Date.now()}`, email, role: DEFAULT_ROLE }
     localStorage.setItem(LOCAL_AUTH_KEY, JSON.stringify(user))
     setCurrentUser(user)
     return user
@@ -74,6 +95,11 @@ export function AuthProvider({ children }) {
       if (error) throw error
       if (data.user && data.session) {
         const user = await userWithRole(data.user)
+        if (user.role !== DEFAULT_ROLE) {
+          const { error: signOutError } = await supabase.auth.signOut()
+          if (signOutError) throw signOutError
+          throw new Error('New accounts must be assigned the staff role.')
+        }
         setCurrentUser(user)
         return { user, requiresEmailConfirmation: false }
       }
@@ -90,6 +116,7 @@ export function AuthProvider({ children }) {
     if (isSupabaseMode) {
       const { error } = await supabase.auth.signOut()
       if (error) throw error
+      setCurrentUser(null)
     } else {
       localStorage.removeItem(LOCAL_AUTH_KEY)
       setCurrentUser(null)

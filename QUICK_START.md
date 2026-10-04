@@ -1,4 +1,4 @@
-# Quick Start: Deploying Supabase Backend
+# Quick Start: AQAT with Supabase Auth
 
 ## Pre-Flight Checklist ✅
 
@@ -19,22 +19,17 @@
 4. Privacy: **Private** ✅ (RLS policies control access)
 5. Click **Create**
 
-### Step 2: Run Migration (2 minutes)
-
-**Option A: Using Supabase CLI (Recommended)**
+### Step 2: Review and apply database migrations
 
 ```bash
 cd C:\Users\lamec\Desktop\aqat
-supabase link --project-ref qiarhrcankopijakeifr
-supabase db push
+supabase migration list --linked
+supabase db push --linked --dry-run
+# Review the SQL and get approval before applying to production.
+supabase db push --linked
 ```
 
-**Option B: SQL Editor (Manual)**
-
-1. Go to https://app.supabase.com → Your Project → SQL Editor
-2. Click **"New query"**
-3. Paste contents of: `supabase/migrations/20260907125400_create_checklist_tables.sql`
-4. Click **"Run"** (or press Ctrl+Enter)
+The current role/copy-slot migration sets roles to `staff` and `admin`, blocks authenticated profile role updates, and requires labelled marked-assessment attachments before submission.
 
 ### Step 3: Verify Setup (2 minutes)
 
@@ -43,10 +38,9 @@ supabase db push
 2. Look for `checklists` and `files` tables ✅
 
 **Verify RLS is enabled:**
-1. Click `checklists` → **Policies** tab
-2. Should see 4 policies ✅
-3. Click `files` → **Policies** tab
-4. Should see 3 policies ✅
+1. Click `checklists` and `files` → **Policies** tabs
+2. Confirm separate owner policies and Admin read/delete policies are present
+3. Confirm owners can delete only their own draft checklists
 
 **Verify indexes exist:**
 1. Click `checklists` → **Indexes** tab
@@ -65,11 +59,11 @@ supabase db push
 
 ## Creating First Checklist
 
-1. Fill in "Subject details" (all required fields)
-2. Complete checklist items (at least one)
-3. Click **"Submit"**
-4. Go to Dashboard → Verify it appears in the list
-5. Refresh page → Verify data persists
+1. Select the **Staff** portal and sign in.
+2. Fill in the subject details and checklist items.
+3. For each marked assessment, upload distinct **Lowest mark**, **Median mark**, and **Highest mark** files.
+4. Submit after all required fields, statuses, and copy slots are complete.
+5. Refresh the Staff dashboard and verify submission and slot progress.
 
 ## Troubleshooting
 
@@ -80,6 +74,8 @@ supabase db push
 | Login screen won't accept credentials | Verify email in Supabase Auth (Dashboard → Authentication) |
 | Files won't upload | Verify `aqat-attachments` bucket exists (Step 1) |
 | Data disappears after refresh | Check you're in `supabase` mode in Settings |
+| Admin portal rejects an account | Confirm its `public.profiles.role` is `admin`; portal selection does not grant access |
+| Submission is blocked | Upload the missing lowest-, median-, and highest-mark slots listed on the checklist |
 
 ## Rollback (if needed)
 
@@ -98,11 +94,12 @@ Then re-run Step 2.
 
 ✅ After the reviewed migrations and Storage bucket are configured, try:
 - [ ] Create multiple checklists
-- [ ] Upload files to checklist items
+- [ ] Upload all three labelled copies for marked assessments
 - [ ] Submit a checklist
 - [ ] Refresh and verify data persists
 - [ ] Switch to `local` mode and back to `supabase` mode
 - [ ] Sign out and back in
+- [ ] Confirm Staff cannot access `/admin` and cannot change their own role
 
 ---
 

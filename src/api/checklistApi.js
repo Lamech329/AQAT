@@ -5,9 +5,11 @@ const defaultApiBaseUrl = import.meta.env.VITE_DEFAULT_API_BASE_URL ?? ''
 import { flatChecklistItems } from '../data/checklistItems'
 // Adjust this path if your Supabase client scaffolding landed somewhere else.
 import { supabase } from '../utils/supabase/client'
+import { COPY_SLOTS, getMissingCopySlots } from '../utils/assessmentCopies'
 
 const FILES_BUCKET = 'aqat-attachments'
 const TEMPORARILY_DISABLED_MODES = new Set(['rest', 'database'])
+const itemSaveQueues = new Map()
 
 export const defaultApiConfig = {
   mode: import.meta.env.VITE_SUPABASE_URL && (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY)
@@ -30,7 +32,12 @@ export const emptyChecklist = () => ({
   },
   items: Object.fromEntries(flatChecklistItems.map((item) => [
     item.id,
-    { status: '', attachment: null, comments: '' },
+    {
+      status: '',
+      attachment: null,
+      attachments: item.marker === 'copies' ? Object.fromEntries(COPY_SLOTS.map(({ id }) => [id, null])) : {},
+      comments: '',
+    },
   ])),
   footer: {
     reviewerComments: '',
@@ -235,13 +242,14 @@ export const listChecklists = async () => {
       submittedAt: row.submitted_at,
       updatedAt: row.updated_at,
       reopenedAt: row.data?.reopenedAt,
+      items: row.data?.items ?? {},
     }))
   }
 
   if (!isLocalMode(config)) return remoteRequest(config, 'checklists')
 
   return Object.values(readRecords())
-    .map(({ id, header, status, submittedAt, updatedAt, reopenedAt }) => ({
+    .map(({ id, header, items, status, submittedAt, updatedAt, reopenedAt }) => ({
       id,
       subjectName: header.subjectName,
       subjectCode: header.subjectCode,
@@ -253,6 +261,7 @@ export const listChecklists = async () => {
       submittedAt,
       updatedAt: updatedAt ?? submittedAt,
       reopenedAt,
+      items,
     }))
     .sort((first, second) => (second.submittedAt ?? '').localeCompare(first.submittedAt ?? ''))
 }
@@ -318,11 +327,33 @@ export const saveItem = async (id, itemId, item) => {
   const config = getApiConfig()
 
   if (isSupabaseMode(config)) {
-    const row = await fetchChecklistRow(id)
-    const items = { ...row.data?.items, [itemId]: item }
-    const result = await patchChecklistData(id, { items })
-    await recordSupabaseActivity(id, 'edited')
-    return result
+    const save = async () => {
+      const row = await fetchChecklistRow(id)
+      const previousItem = row.data?.items?.[itemId] ?? {}
+      const updatedItem = {
+        ...previousItem,
+        ...item,
+        attachments: { ...(previousItem.attachments ?? {}), ...(item.attachments ?? {}) },
+      }
+      const { data, error } = await supabase
+        .from('checklists')
+        .update({ data: { ...row.data, items: { ...row.data?.items, [itemId]: updatedItem } } })
+        .eq('id', id)
+        .select()
+        .single()
+      if (error) throw error
+      await recordSupabaseActivity(id, 'edited')
+      return rowToChecklist(data)
+    }
+
+    const previousSave = itemSaveQueues.get(id) ?? Promise.resolve()
+    const pendingSave = previousSave.catch(() => {}).then(save)
+    itemSaveQueues.set(id, pendingSave)
+    try {
+      return await pendingSave
+    } finally {
+      if (itemSaveQueues.get(id) === pendingSave) itemSaveQueues.delete(id)
+    }
   }
 
   if (!isLocalMode(config)) {
@@ -335,7 +366,7 @@ export const saveItem = async (id, itemId, item) => {
   })
 }
 
-export const uploadFile = async (id, file) => {
+export const uploadFile = async (id, file, itemId, copySlot = null) => {
   const config = getApiConfig()
 
   if (isSupabaseMode(config)) {
@@ -353,6 +384,8 @@ export const uploadFile = async (id, file) => {
         content_type: file.type,
         size: file.size,
         uploaded_by: user.id,
+        item_id: itemId,
+        copy_slot: copySlot,
       })
       .select()
       .single()
@@ -406,6 +439,14 @@ export const submitChecklist = async (id) => {
   const config = getApiConfig()
 
   if (isSupabaseMode(config)) {
+    const row = await fetchChecklistRow(id)
+    const missingCopies = getMissingCopySlots(row.data?.items ?? {})
+    if (missingCopies.length) {
+      const missingText = missingCopies
+        .map(({ assessmentLabel, label }) => `${assessmentLabel}: ${label}`)
+        .join('; ')
+      throw new Error(`Cannot submit. Missing marked-assessment copies: ${missingText}.`)
+    }
     const submittedAt = new Date().toISOString()
     const { data, error } = await supabase
       .from('checklists')
@@ -419,6 +460,14 @@ export const submitChecklist = async (id) => {
   }
 
   if (!isLocalMode(config)) return remoteRequest(config, `checklists/${encodeURIComponent(id)}/submit`, { method: 'POST' })
+  const record = localRecord(id)
+  const missingCopies = getMissingCopySlots(record?.items ?? {})
+  if (missingCopies.length) {
+    const missingText = missingCopies
+      .map(({ assessmentLabel, label }) => `${assessmentLabel}: ${label}`)
+      .join('; ')
+    throw new Error(`Cannot submit. Missing marked-assessment copies: ${missingText}.`)
+  }
   return updateLocalRecord(id, { status: 'submitted', submittedAt: new Date().toISOString() })
 }
 
@@ -456,7 +505,7 @@ export const deleteChecklist = async (id) => {
       .single()
     if (profileError) throw profileError
 
-    const isAdmin = profile.role === 'admin' || profile.role === 'super_admin'
+    const isAdmin = profile.role === 'admin'
     if (!isAdmin && (row.owner !== user.id || row.status !== 'draft')) {
       throw new Error('Only admins or the owner of a draft checklist can delete it.')
     }
@@ -470,6 +519,9 @@ export const deleteChecklist = async (id) => {
     const paths = new Set(fileRows.map((file) => file.path))
     Object.values(row.data?.items ?? {}).forEach((item) => {
       if (item?.attachment?.path) paths.add(item.attachment.path)
+      Object.values(item?.attachments ?? {}).forEach((attachment) => {
+        if (attachment?.path) paths.add(attachment.path)
+      })
     })
 
     if (paths.size) {

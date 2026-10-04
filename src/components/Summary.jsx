@@ -1,4 +1,5 @@
 import { markerLabels } from '../data/checklistItems'
+import { COPY_SLOTS } from '../utils/assessmentCopies'
 import { ThemeToggle } from './ThemeToggle'
 import { SettingsButton } from './SettingsPanel'
 
@@ -32,12 +33,18 @@ export function Summary({ header, items, itemState, footer, submittedAt, onPrint
           <tbody>
             {items.map((item) => {
               const state = itemState[item.id] ?? {}
+              const attachments = item.marker === 'copies'
+                ? [
+                    state.attachment && `Legacy upload (unassigned): ${state.attachment.name}`,
+                    ...COPY_SLOTS.map(({ id, label }) => state.attachments?.[id] && `${label}: ${state.attachments[id].name}`),
+                  ].filter(Boolean)
+                : [state.attachment?.name].filter(Boolean)
               return (
                 <tr key={item.id} className={item.order.length > 2 ? 'summary-sub-item' : ''}>
                   <td>{item.order}</td>
                   <td>{item.label} {item.marker && <em>({markerLabels[item.marker]})</em>}</td>
                   <td className={`summary-status status-${state.status || 'none'}`}>{statusLabels[state.status] ?? '—'}</td>
-                  <td>{[state.attachment?.name, state.comments].filter(Boolean).join(' — ') || '—'}</td>
+                  <td>{[...attachments, state.comments].filter(Boolean).join(' — ') || '—'}</td>
                 </tr>
               )
             })}
