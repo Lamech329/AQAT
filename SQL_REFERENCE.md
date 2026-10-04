@@ -154,10 +154,13 @@ WHERE id = $2 AND owner = auth.uid()  -- RLS enforces owner check
 → Updates specific section of JSONB without touching others
 
 ### When you UPLOAD (uploadFile)
-```sql
-INSERT INTO checklist-files BUCKET/path/file.pdf  -- Supabase Storage
-INSERT INTO files (checklist_id, path, name, ...) -- Metadata
-WHERE checklist_id IN (SELECT id FROM checklists WHERE owner = auth.uid())  -- RLS
+```text
+Upload the file through the Supabase Storage API:
+- Bucket: aqat-attachments
+- Object path: <checklist_id>/<filename>
+
+Then insert its metadata into public.files through the Data API.
+RLS verifies that the authenticated user owns the referenced checklist.
 ```
 → Stores file in Storage bucket; tracks metadata in files table
 

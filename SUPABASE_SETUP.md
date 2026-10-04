@@ -1,8 +1,8 @@
-# Supabase Backend Setup Guide for AQAT Checklist App
+# Supabase Data Setup Guide for AQAT Checklist App
 
 ## Overview
 
-This guide walks you through setting up the Supabase backend database and storage for the AQAT Checklist application.
+This guide walks you through setting up the Supabase database and Storage for the AQAT Checklist application. The frontend uses the signed-in browser Supabase client directly; the optional Express server does not perform checklist or file data operations.
 
 ## What's Been Created
 
@@ -19,7 +19,7 @@ This migration creates:
 ### 2. API Layer
 **File:** `src/api/checklistApi.js` (existing, already compatible)
 
-The existing code already implements Supabase mode correctly:
+Supabase mode calls the Data and Storage APIs directly with the signed-in user's session:
 - ✅ Uses `auth.uid()` to identify current user
 - ✅ Stores checklist data as JSONB (header, items, footer)
 - ✅ Manages file uploads to Supabase Storage
@@ -59,7 +59,7 @@ Column         | Type        | Notes
 ---------------+-------------+------------------------------------------
 id             | uuid        | Primary key
 checklist_id   | uuid        | Foreign key to checklists(id)
-path           | text        | Storage path in 'checklist-files' bucket
+path           | text        | Storage path in 'aqat-attachments' bucket
 name           | text        | Original filename
 content_type   | text        | MIME type
 size           | int8        | File size in bytes
@@ -87,7 +87,7 @@ All policies ensure users can only access their own checklists:
 ### Step 1: Create the Supabase Storage Bucket
 
 1. Go to your Supabase Dashboard → Storage
-2. Create a new bucket named `checklist-files`
+2. Create a new bucket named `aqat-attachments`
 3. Set the bucket to **Private** (RLS is handled by policies)
 4. Click Create
 
@@ -165,12 +165,12 @@ The existing `src/api/checklistApi.js` handles all three modes:
 
 - **local** mode: Stores in browser localStorage (no backend)
 - **remote** mode: Makes HTTP requests to your own API
-- **supabase** mode: Uses this new backend ✅ (now fully supported)
+- **supabase** mode: Uses the authenticated browser Supabase client directly; RLS authorizes database and Storage requests
 
 When mode is set to `supabase`, the app:
 1. Requires authentication via Supabase Auth
 2. Queries checklists owned by the authenticated user
-3. Uploads files to the `checklist-files` storage bucket
+3. Uploads files to the `aqat-attachments` storage bucket
 4. Tracks files in the `files` database table
 5. Respects RLS policies (users only see their data)
 
@@ -181,7 +181,7 @@ When mode is set to `supabase`, the app:
 - **Fix:** Re-run the migration or manually apply policies via SQL Editor
 
 ### Files not uploading
-- **Cause:** `checklist-files` bucket doesn't exist or has wrong permissions
+- **Cause:** `aqat-attachments` bucket doesn't exist or has wrong permissions
 - **Fix:** Create the bucket as described in Step 1
 
 ### "No tables found" when fetching checklists
@@ -196,7 +196,7 @@ When mode is set to `supabase`, the app:
 
 ✅ **Secure:**
 - Publishable key is safe to expose (client-side only)
-- Service role key is NOT used anywhere in this code
+- The browser never uses a service-role key
 - All data access is controlled by RLS policies
 - Users can only see/edit their own checklists
 - File uploads are restricted by RLS

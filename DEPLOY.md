@@ -70,7 +70,7 @@ The existing `src/api/checklistApi.js` is already fully compatible:
 **Manual in Supabase Dashboard:**
 1. https://app.supabase.com → Your Project
 2. **Storage** → **New bucket**
-3. Name: `checklist-files`
+3. Name: `aqat-attachments`
 4. Privacy: **Private**
 5. Create
 

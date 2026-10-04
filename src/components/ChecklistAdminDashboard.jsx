@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import JSZip from 'jszip'
-import { getApiConfig, getChecklist, listChecklists } from '../api/checklistApi'
+import { deleteChecklist, getApiConfig, getChecklist, listChecklists } from '../api/checklistApi'
 import { flatChecklistItems } from '../data/checklistItems'
 import { supabase } from '../utils/supabase/client'
 import { ThemeToggle } from './ThemeToggle'
@@ -124,6 +124,23 @@ export function ChecklistAdminDashboard({ superAdmin = false }) {
     }
   }
 
+  const handleDelete = async (record) => {
+    const message = `This will permanently delete this checklist and any attached files for ${record.header?.subjectCode || 'this checklist'}. This cannot be undone.`
+    const shouldDelete = window.confirm(message)
+    if (!shouldDelete) return
+
+    try {
+      await deleteChecklist(record.id)
+      const updatedRecords = await getFullRecords()
+      setRecords(updatedRecords)
+      if (selected?.id === record.id) {
+        setSelected(null)
+      }
+    } catch (deleteError) {
+      setError(deleteError.message ?? 'Unable to delete checklist.')
+    }
+  }
+
   const downloadFile = async (file) => {
     let blob
     if (file.dataUrl) {
@@ -215,8 +232,30 @@ export function ChecklistAdminDashboard({ superAdmin = false }) {
         </div>
         <div className="dashboard-table-wrap">
           <table className="dashboard-table admin-table">
-            <thead><tr>{[['subjectCode', 'Subject code'], ['subjectName', 'Subject name'], ['department', 'Department'], ['staffName', 'Lecturer'], ['status', 'Status'], ['submittedAt', 'Submitted'], ['updatedAt', 'Last updated']].map(([key, label]) => <th key={key}><button type="button" className="table-sort" onClick={() => updateSort(key)}>{label} {sort.key === key ? (sort.direction === 'asc' ? '↑' : '↓') : ''}</button></th>)}{superAdmin && <th>Files</th>}</tr></thead>
-            <tbody>{visibleRecords.map((record) => <tr key={record.id} className={isStale(record, staleDays) ? 'stale-row' : ''}><td>{record.header?.subjectCode || '—'}</td><td>{record.header?.subjectName || 'Untitled checklist'}</td><td>{record.header?.department || '—'}</td><td>{record.header?.staffName || '—'}</td><td><span className={`status-badge ${record.status}`}>{statusLabel(record.status)}</span>{isStale(record, staleDays) && <span className="stale-badge">Stale</span>}</td><td>{dateTime(record.submittedAt)}</td><td>{dateTime(record.updatedAt)}</td>{superAdmin && <td><button className="secondary-button" type="button" onClick={() => openFiles(record)}>View files</button></td>}</tr>)}</tbody>
+            <thead>
+              <tr>
+                {[['subjectCode', 'Subject code'], ['subjectName', 'Subject name'], ['department', 'Department'], ['staffName', 'Lecturer'], ['status', 'Status'], ['submittedAt', 'Submitted'], ['updatedAt', 'Last updated']].map(([key, label]) => (
+                  <th key={key}><button type="button" className="table-sort" onClick={() => updateSort(key)}>{label} {sort.key === key ? (sort.direction === 'asc' ? '↑' : '↓') : ''}</button></th>
+                ))}
+                {superAdmin && <th>Files</th>}
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleRecords.map((record) => (
+                <tr key={record.id} className={isStale(record, staleDays) ? 'stale-row' : ''}>
+                  <td>{record.header?.subjectCode || '—'}</td>
+                  <td>{record.header?.subjectName || 'Untitled checklist'}</td>
+                  <td>{record.header?.department || '—'}</td>
+                  <td>{record.header?.staffName || '—'}</td>
+                  <td><span className={`status-badge ${record.status}`}>{statusLabel(record.status)}</span>{isStale(record, staleDays) && <span className="stale-badge">Stale</span>}</td>
+                  <td>{dateTime(record.submittedAt)}</td>
+                  <td>{dateTime(record.updatedAt)}</td>
+                  {superAdmin && <td><button className="secondary-button" type="button" onClick={() => openFiles(record)}>View files</button></td>}
+                  <td><button className="delete-button" type="button" onClick={() => handleDelete(record)}>Delete</button></td>
+                </tr>
+              ))}
+            </tbody>
           </table>
         </div>
         <div className="pagination"><span>{filteredRecords.length} checklist(s)</span><div><button className="secondary-button" disabled={page === 1} onClick={() => setPage((current) => current - 1)}>Previous</button><span>Page {page} of {pageCount}</span><button className="secondary-button" disabled={page === pageCount} onClick={() => setPage((current) => current + 1)}>Next</button></div></div>

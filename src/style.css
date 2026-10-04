@@ -144,6 +144,22 @@ input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible
 .status-option-no:has(input:checked) { background: var(--error-bg); color: var(--error-text); }
 .status-option-na:has(input:checked) { background: var(--available-bg); color: var(--available-text); }
 .attachment-control small { max-width: 160px; overflow: hidden; color: var(--success-text); font-size: .72rem; text-overflow: ellipsis; white-space: nowrap; }
+.attachment-section { display: grid; min-width: 0; align-content: end; gap: 8px; }
+.attachment-control { display: grid; min-width: 0; gap: 8px; padding: 10px; border: 1px dashed var(--border-strong); border-radius: 8px; background: var(--surface-muted); color: var(--label); font-size: .82rem; font-weight: 700; }
+.attachment-control input[type="file"] { max-width: 100%; color: var(--text-muted); font-size: .72rem; font-weight: 400; }
+.attachment-control input[type="file"]::file-selector-button { margin-right: 8px; padding: 6px 9px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--surface); color: var(--accent); cursor: pointer; font: inherit; font-weight: 700; }
+.attachment-control input[type="file"]::file-selector-button:hover { background: var(--accent-surface); }
+.attachment-status { display: flex; min-width: 0; align-items: center; gap: 10px; padding: 9px 10px; border: 1px solid var(--border); border-left: 3px solid var(--success-text); border-radius: 7px; background: color-mix(in srgb, var(--success-bg) 35%, var(--surface)); }
+.attachment-name { flex: 1; min-width: 0; overflow: hidden; color: var(--success-text); font-size: .75rem; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.attachment-remove { flex: 0 0 auto; padding: 5px 9px; border: 1px solid var(--error-text); border-radius: 6px; background: transparent; color: var(--error-text); cursor: pointer; font-size: .74rem; font-weight: 700; transition: background-color .18s ease, transform .18s ease; }
+.attachment-remove:hover:not(:disabled) { background: color-mix(in srgb, var(--error-text) 12%, transparent); }
+.attachment-remove:active:not(:disabled) { transform: scale(.95); }
+.attachment-remove:disabled { cursor: not-allowed; opacity: .6; }
+.submit-row-actions { display: flex; gap: 10px; align-items: center; }
+.delete-button { padding: 11px 17px; border: 1px solid var(--error-text); border-radius: 8px; background: transparent; color: var(--error-text); cursor: pointer; font-weight: 800; transition: transform .18s ease, background-color .18s ease, box-shadow .18s ease; }
+.delete-button:hover:not(:disabled) { background: color-mix(in srgb, var(--error-text) 12%, transparent); box-shadow: 0 5px 12px color-mix(in srgb, var(--error-text) 22%, transparent); transform: translateY(-1px); }
+.delete-button:active:not(:disabled) { transform: translateY(0) scale(.98); }
+.delete-button:disabled { cursor: not-allowed; opacity: .6; }
 .required-hint { color: var(--error-text); font-style: normal; font-weight: 700; }
 input[type="file"] { width: 100%; font-size: .75rem; font-weight: 400; }
 .locked { opacity: .52; }
@@ -251,6 +267,7 @@ th { background: var(--table-header); color: var(--accent-strong); }
 .settings-heading { display: flex; justify-content: space-between; gap: 16px; align-items: start; margin-bottom: 16px; }
 .close-button { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 1px solid var(--border-strong); border-radius: 50%; background: var(--surface); color: var(--text); cursor: pointer; font-size: 1.55rem; line-height: 1; }
 .settings-intro { margin-bottom: 22px; color: var(--text-muted); font-size: .9rem; line-height: 1.5; }
+.mode-disabled-note { margin: -8px 0 0; padding: 10px 12px; border-radius: 7px; background: var(--surface-muted); color: var(--text-muted); font-size: .82rem; line-height: 1.5; }
 .settings-panel form { display: grid; gap: 18px; }
 .remote-settings { display: grid; gap: 18px; padding: 18px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-muted); }
 .settings-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px; }
@@ -275,7 +292,7 @@ th { background: var(--table-header); color: var(--accent-strong); }
   .card { padding: 19px; }
   .header-grid, .footer-grid, .summary-details { grid-template-columns: 1fr; }
   .item-controls { grid-template-columns: 1fr; }
-  .section-heading, .submit-row, .summary-topline { flex-direction: column; }
+  .section-heading, .submit-row, .submit-row-actions, .summary-topline { flex-direction: column; }
   .checklist-item.sub-item { margin-left: 12px; }
   .summary-paper { padding: 20px; overflow-x: auto; }
   .settings-panel { padding: 22px; }

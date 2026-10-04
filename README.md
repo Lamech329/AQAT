@@ -56,7 +56,7 @@ For Netlify, create a new site from the project repository and set:
 
 The deployed site works immediately in Local storage mode. To use a department API, open the gear icon in the app and enter its URL and authentication settings. That API must expose the endpoints used by `src/api/checklistApi.js` and allow requests from the deployed site's origin.
 
-When `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` are configured, Supabase is the default data source for new browsers. The sign-in page includes self-service sign-up. New Supabase accounts receive the `user` role through the `profiles` trigger; promote trusted accounts to `admin` or `super_admin` directly in `public.profiles` rather than from the browser. Apply the latest migration before using existing Auth users.
+When `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` are configured, Supabase is the default data source for new browsers. Checklist and attachment requests go directly from the browser Supabase client using the signed-in user's session, so database and Storage RLS policies authorize them. The Express server is only a health check and does not write checklist or file data. The sign-in page includes self-service sign-up. New Supabase accounts receive the `user` role through the `profiles` trigger; promote trusted accounts to `admin` or `super_admin` directly in `public.profiles` rather than from the browser. Apply reviewed migrations before using existing Auth users.
 
 ## Dashboard access
 

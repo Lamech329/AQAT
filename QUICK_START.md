@@ -15,7 +15,7 @@
 
 1. Go to https://app.supabase.com → Your Project → Storage
 2. Click **"New bucket"**
-3. Name: `checklist-files`
+3. Name: `aqat-attachments`
 4. Privacy: **Private** ✅ (RLS policies control access)
 5. Click **Create**
 
@@ -78,7 +78,7 @@ supabase db push
 | "Table does not exist" | Run migration (Step 2) |
 | "Access denied" when inserting | RLS policies not applied; re-run migration |
 | Login screen won't accept credentials | Verify email in Supabase Auth (Dashboard → Authentication) |
-| Files won't upload | Verify `checklist-files` bucket exists (Step 1) |
+| Files won't upload | Verify `aqat-attachments` bucket exists (Step 1) |
 | Data disappears after refresh | Check you're in `supabase` mode in Settings |
 
 ## Rollback (if needed)
@@ -96,7 +96,7 @@ Then re-run Step 2.
 
 ## What's Next
 
-✅ Backend is ready. Try:
+✅ After the reviewed migrations and Storage bucket are configured, try:
 - [ ] Create multiple checklists
 - [ ] Upload files to checklist items
 - [ ] Submit a checklist

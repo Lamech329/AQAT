@@ -62,11 +62,15 @@ export function SettingsPanel({ config, onClose, onSave }) {
             <span>Data Source</span>
             <select value={draft.mode} onChange={(event) => update('mode', event.target.value)}>
               <option value="local">Local storage</option>
-              <option value="rest">Custom REST API</option>
-              <option value="database">Custom Database via API</option>
+              <option value="rest" disabled title="Temporarily disabled">Custom REST API (temporarily disabled)</option>
+              <option value="database" disabled title="Temporarily disabled">Custom Database via API (temporarily disabled)</option>
               <option value="supabase">Supabase</option>
             </select>
           </label>
+
+          <p className="mode-disabled-note">
+            Custom API modes are currently disabled. Supabase is the active, fully supported backend for this deployment. They remain in the codebase as a planned extensibility option for future institutional integration.
+          </p>
 
           {draft.mode === 'supabase' && (
             <div className="supabase-note">

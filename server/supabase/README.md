@@ -1,22 +1,12 @@
-Supabase setup for AQAT backend
+The Express server no longer reads or writes checklist, file, or activity data.
+The app uses the browser Supabase client and the signed-in user's session so
+Postgres and Storage RLS policies authorize each request.
 
-Commands to run locally (after installing supabase CLI and logging in):
+Apply database changes from the canonical migrations in `../../supabase/migrations`
+using the normal reviewed migration workflow. Do not run this legacy schema file
+as a replacement for those migrations. Create the private `aqat-attachments`
+Storage bucket in Supabase; authenticated browser uploads are authorized by
+the Storage policies in the migrations.
 
-1. Login and link project
-   supabase login
-   supabase projects list
-   supabase link --project-ref <your-project-ref>
-
-2. Apply DB schema
-   supabase db query ./server/supabase/schema.sql
-
-3. Create storage bucket for checklist files (private recommended)
-   supabase storage create-bucket checklist-files --public false
-
-4. (Optional) Make bucket public if you want direct public URLs
-   supabase storage update-bucket checklist-files --public true
-
-Notes:
-- The schema creates public.checklists and public.files tables and enables RLS policies so users can only access their own data using auth.uid().
-- Ensure SUPABASE_URL and SUPABASE_KEY (service role or a key with appropriate privileges) are added to server/.env before running server operations that require Supabase.
-- If you want, grant the server a service role key in an environment variable; keep it secret.
+The Express server only exposes `GET /ping` as a health check and does not need
+or accept a Supabase service-role key.

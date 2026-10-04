@@ -78,7 +78,7 @@ create table if not exists files (
 **Usage Flow:**
 1. User uploads file via ChecklistItem component
 2. `uploadFile()` in checklistApi.js:
-   - Uploads file to Supabase Storage bucket `checklist-files`
+   - Uploads file to Supabase Storage bucket `aqat-attachments`
    - Inserts metadata row into `files` table
 3. Returns file metadata to update checklist.items[itemId].attachment
 
@@ -297,7 +297,7 @@ The existing `src/api/checklistApi.js` is already fully compatible with this sch
 ### One Manual Step Required
 **Create the Supabase Storage bucket** (not done via SQL):
 1. Go to Supabase Dashboard → Storage
-2. Create bucket named `checklist-files`
+2. Create bucket named `aqat-attachments`
 3. Set to Private (RLS handles access control)
 
 ### Field Name Casing ✅

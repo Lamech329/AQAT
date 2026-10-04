@@ -3,11 +3,13 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import {
   createChecklist,
   createChecklistId,
+  deleteChecklist,
   emptyChecklist,
   getApiConfig,
   getChecklist,
   listChecklists,
   reopenChecklist,
+  removeAttachment,
   saveFooter,
   saveHeader,
   saveItem,
@@ -117,6 +119,18 @@ function ChecklistWorkspace() {
     updateItem(itemId, { attachment })
   }
 
+  const handleRemoveAttachment = async (itemId, attachment) => {
+    if (!attachment) return
+    try {
+      if (attachment.path) {
+        await removeAttachment(checklist.id, attachment.path)
+      }
+      updateItem(itemId, { attachment: null })
+    } catch (err) {
+      alert(`Failed to remove attachment: ${err.message}`)
+    }
+  }
+
   const updateFooter = (name, value) => {
     const footer = { ...checklist.footer, [name]: value }
     setChecklist((current) => ({ ...current, footer }))
@@ -135,6 +149,19 @@ function ChecklistWorkspace() {
     const reopened = await reopenChecklist(checklist.id)
     setChecklist(reopened)
     setView('editor')
+  }
+
+  const handleDelete = async () => {
+    const shouldDelete = window.confirm('This will permanently delete this draft checklist. This cannot be undone.')
+    if (!shouldDelete) return
+
+    try {
+      await deleteChecklist(checklist.id)
+      await refreshDashboard()
+      returnToDashboard()
+    } catch (err) {
+      alert(`Failed to delete checklist: ${err.message}`)
+    }
   }
 
   const editRecord = async (id) => {
@@ -217,13 +244,19 @@ function ChecklistWorkspace() {
         onStatusChange={(itemId, status) => updateItem(itemId, { status })}
         onFileChange={handleFileChange}
         onCommentChange={(itemId, comments) => updateItem(itemId, { comments })}
+        onRemoveAttachment={handleRemoveAttachment}
       />
       <FooterComments footer={checklist.footer} onChange={updateFooter} />
       <div className="submit-row">
         <p>{canSubmit ? 'All requirements are resolved. Your checklist is ready to submit.' : 'Resolve every checklist requirement before submitting.'}</p>
-        <button className="submit-button" disabled={!canSubmit || submitting} onClick={handleSubmit}>
-          {submitting ? 'Submitting...' : 'Submit Checklist'}
-        </button>
+        <div className="submit-row-actions">
+          {checklist.status === 'draft' && (
+            <button className="delete-button" onClick={handleDelete}>Delete Draft</button>
+          )}
+          <button className="submit-button" disabled={!canSubmit || submitting} onClick={handleSubmit}>
+            {submitting ? 'Submitting...' : 'Submit Checklist'}
+          </button>
+        </div>
       </div>
       {settingsOpen && <SettingsPanel config={apiConfig} onSave={setApiConfig} onClose={() => setSettingsOpen(false)} />}
     </main>

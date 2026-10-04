@@ -1,6 +1,6 @@
 import { ChecklistItem } from './ChecklistItem'
 
-export function Checklist({ items, itemState, headerComplete, readOnly, onStatusChange, onFileChange, onCommentChange }) {
+export function Checklist({ items, itemState, headerComplete, readOnly, onStatusChange, onFileChange, onCommentChange, onRemoveAttachment }) {
   let previousResolved = true
   let completeCount = 0
 
@@ -21,6 +21,7 @@ export function Checklist({ items, itemState, headerComplete, readOnly, onStatus
         onStatusChange={(status) => onStatusChange(item.id, status)}
         onFileChange={(file) => onFileChange(item.id, file)}
         onCommentChange={(comments) => onCommentChange(item.id, comments)}
+        onRemoveAttachment={onRemoveAttachment}
       />
     )
   })

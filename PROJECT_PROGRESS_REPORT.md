@@ -4,6 +4,8 @@
 **Project:** AQAT Subject File Checklist  
 **Repository status:** The workspace is not currently a Git repository, so commit history and change attribution were not available for this report.
 
+> **Current-status note (2026-09-27):** The details below describe the earlier project state and are superseded where they conflict with the verification update at the end. Checklist and file data now use the authenticated browser Supabase client; the Express server is health-check-only. The new RLS cleanup migration has not been applied.
+
 ## Executive Summary
 
 The main AQAT checklist frontend is implemented as a React/Vite application and currently produces a successful production build. The application supports checklist creation, editing, completion tracking, submission, reopening, summaries, themes, attachments, and multiple data-storage modes.
@@ -141,3 +143,12 @@ There are no discovered unit, integration, or end-to-end test files. Important b
 **Supabase mode:** Structurally implemented but not fully runtime-verified; attachment configuration must be corrected.  
 **Express backend:** Incomplete; currently blocked by TypeScript errors and requiring security review.  
 **Testing:** Minimal; automated coverage is currently absent.
+
+## Verification Update — 2026-09-27
+
+- Checklist and file reads/writes now use the authenticated browser Supabase client. The Express server no longer exposes checklist/file routes or creates a Supabase client with a potentially privileged key.
+- Checklist inserts provide the signed-in user's `owner` because the migration defines it as `NOT NULL` without a default and the insert `WITH CHECK` requires `auth.uid() = owner`. File metadata inserts provide `uploaded_by` because its `WITH CHECK` requires `auth.uid() = uploaded_by`.
+- The linked database showed two exact duplicate checklist `ALL` policies: `"Checklists owner can manage"` (`public`) and `checklists_owner_manage` (`authenticated`), both with `owner = auth.uid()` for `USING` and `WITH CHECK`. The `public` policy also targets unauthenticated requests and is removed by the new cleanup migration.
+- The file `ALL` policies were not duplicates: `"Files owner can manage"` checks `uploaded_by = auth.uid()`, while `files_owner_manage` checks ownership of the parent checklist. Their permissive combination broadened writes, so both are removed in favor of the existing operation-specific file policies.
+- The new RLS cleanup migration is intentionally unapplied pending review. No production policy was changed by this work.
+- The frontend and backend builds pass. Supabase Auth requires email confirmation, so an authenticated non-admin write test is pending a test account with a reachable confirmation inbox.

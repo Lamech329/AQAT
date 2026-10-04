@@ -44,14 +44,7 @@ create table if not exists public.files (
 create index if not exists idx_checklists_submitted_at on public.checklists (submitted_at desc);
 create index if not exists idx_files_checklist_id on public.files (checklist_id);
 
--- Row-level security and policies
+-- Enable RLS. Operation-specific ownership policies are defined in the
+-- canonical migrations under ../../supabase/migrations.
 alter table public.checklists enable row level security;
-
-create policy if not exists "Checklists owner can manage" on public.checklists
-  using (owner = auth.uid())
-  with check (owner = auth.uid());
-
 alter table public.files enable row level security;
-create policy if not exists "Files owner can manage" on public.files
-  using (uploaded_by = auth.uid())
-  with check (uploaded_by = auth.uid());

@@ -1,7 +1,7 @@
 import { useRef } from 'react'
 import { markerLabels } from '../data/checklistItems'
 
-export function ChecklistItem({ item, itemState, disabled, readOnly, onStatusChange, onFileChange, onCommentChange }) {
+export function ChecklistItem({ item, itemState, disabled, readOnly, onStatusChange, onFileChange, onCommentChange, onRemoveAttachment }) {
   const status = itemState?.status ?? ''
   const attachment = itemState?.attachment
   const fileInputRef = useRef(null)
@@ -14,6 +14,12 @@ export function ChecklistItem({ item, itemState, disabled, readOnly, onStatusCha
     }
     if (nextStatus === 'no') {
       requestAnimationFrame(() => commentInputRef.current?.focus())
+    }
+  }
+
+  const handleRemoveAttachment = () => {
+    if (onRemoveAttachment) {
+      onRemoveAttachment(item.id, attachment)
     }
   }
 
@@ -57,17 +63,33 @@ export function ChecklistItem({ item, itemState, disabled, readOnly, onStatusCha
             N/A
           </label>
         </fieldset>
-        <label className="attachment-control">
-          <span>Attachment</span>
-          <input
-            type="file"
-            ref={fileInputRef}
-            accept=".pdf,.doc,.docx,.xls,.xlsx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            disabled={disabled || readOnly}
-            onChange={(event) => onFileChange(event.target.files?.[0])}
-          />
-          {attachment && <small>Attached: {attachment.name}</small>}
-        </label>
+        <div className="attachment-section">
+          <label className="attachment-control">
+            <span>Attachment</span>
+            <input
+              type="file"
+              ref={fileInputRef}
+              accept=".pdf,.doc,.docx,.xls,.xlsx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              disabled={disabled || readOnly}
+              onChange={(event) => onFileChange(event.target.files?.[0])}
+            />
+          </label>
+          {attachment && (
+            <div className="attachment-status">
+              <span className="attachment-name">Attached: {attachment.name}</span>
+              <button
+                type="button"
+                className="attachment-remove"
+                onClick={handleRemoveAttachment}
+                disabled={disabled || readOnly}
+                aria-label={`Remove attachment: ${attachment.name}`}
+                title="Remove this attachment"
+              >
+                Remove
+              </button>
+            </div>
+          )}
+        </div>
         <label className="comment-control">
           <span>Comments{status === 'no' && !itemState?.comments && <em className="required-hint"> (required)</em>}</span>
           <input

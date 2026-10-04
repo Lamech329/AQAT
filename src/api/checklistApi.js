@@ -7,6 +7,7 @@ import { flatChecklistItems } from '../data/checklistItems'
 import { supabase } from '../utils/supabase/client'
 
 const FILES_BUCKET = 'aqat-attachments'
+const TEMPORARILY_DISABLED_MODES = new Set(['rest', 'database'])
 
 export const defaultApiConfig = {
   mode: import.meta.env.VITE_SUPABASE_URL && (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY)
@@ -45,13 +46,20 @@ export const createChecklistId = () => (
 
 export const getApiConfig = () => {
   const saved = localStorage.getItem(API_CONFIG_KEY)
-  return saved ? { ...defaultApiConfig, ...JSON.parse(saved) } : defaultApiConfig
+  if (!saved) return defaultApiConfig
+
+  const config = { ...defaultApiConfig, ...JSON.parse(saved) }
+  if (TEMPORARILY_DISABLED_MODES.has(config.mode)) {
+    return { ...config, mode: defaultApiConfig.mode }
+  }
+  return config
 }
 
 export const saveApiConfig = (config) => {
   const savedConfig = {
     ...defaultApiConfig,
     ...config,
+    mode: TEMPORARILY_DISABLED_MODES.has(config.mode) ? defaultApiConfig.mode : config.mode,
     baseUrl: config.baseUrl.trim().replace(/\/+$/, ''),
     credential: config.credential.trim(),
   }
@@ -148,17 +156,15 @@ const jsonRequest = (config, endpoint, method, body) => remoteRequest(config, en
 // Supabase helpers
 // ---------------------------------------------------------------------
 
-const getCurrentUserId = async () => {
+const getCurrentUser = async () => {
   const { data, error } = await supabase.auth.getUser()
   if (error) throw error
-  return data.user?.id ?? null
+  if (!data.user) throw new Error('Sign in to save checklist data.')
+  return data.user
 }
 
 const recordSupabaseActivity = async (checklistId, action) => {
-  const { data, error: userError } = await supabase.auth.getUser()
-  if (userError) throw userError
-  const user = data.user
-  if (!user) return
+  const user = await getCurrentUser()
   const { error } = await supabase.from('activity_logs').insert({
     checklist_id: checklistId,
     action,
@@ -278,12 +284,12 @@ export const createChecklist = async (checklist) => {
   }
 
   if (isSupabaseMode(config)) {
-    const ownerId = await getCurrentUserId()
+    const user = await getCurrentUser()
     const { error } = await supabase.from('checklists').insert({
       id: record.id,
       data: { header: record.header, items: record.items, footer: record.footer },
       status: 'draft',
-      owner: ownerId,
+      owner: user.id,
     })
     if (error) throw error
     return record
@@ -337,7 +343,7 @@ export const uploadFile = async (id, file) => {
     const { error: uploadError } = await supabase.storage.from(FILES_BUCKET).upload(path, file)
     if (uploadError) throw uploadError
 
-    const ownerId = await getCurrentUserId()
+    const user = await getCurrentUser()
     const { data, error } = await supabase
       .from('files')
       .insert({
@@ -346,7 +352,7 @@ export const uploadFile = async (id, file) => {
         name: file.name,
         content_type: file.type,
         size: file.size,
-        uploaded_by: ownerId,
+        uploaded_by: user.id,
       })
       .select()
       .single()
@@ -435,6 +441,82 @@ export const reopenChecklist = async (id) => {
 
   if (!isLocalMode(config)) return jsonRequest(config, `checklists/${encodeURIComponent(id)}/status`, 'PUT', { status: 'reopened' })
   return updateLocalRecord(id, { status: 'reopened', reopenedAt: new Date().toISOString(), _activityAction: 'reopened' })
+}
+
+export const deleteChecklist = async (id) => {
+  const config = getApiConfig()
+
+  if (isSupabaseMode(config)) {
+    const row = await fetchChecklistRow(id)
+    const user = await getCurrentUser()
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+    if (profileError) throw profileError
+
+    const isAdmin = profile.role === 'admin' || profile.role === 'super_admin'
+    if (!isAdmin && (row.owner !== user.id || row.status !== 'draft')) {
+      throw new Error('Only admins or the owner of a draft checklist can delete it.')
+    }
+
+    const { data: fileRows, error: filesError } = await supabase
+      .from('files')
+      .select('path')
+      .eq('checklist_id', id)
+    if (filesError) throw filesError
+
+    const paths = new Set(fileRows.map((file) => file.path))
+    Object.values(row.data?.items ?? {}).forEach((item) => {
+      if (item?.attachment?.path) paths.add(item.attachment.path)
+    })
+
+    if (paths.size) {
+      const { error: storageError } = await supabase.storage.from(FILES_BUCKET).remove([...paths])
+      if (storageError) throw storageError
+    }
+
+    const { data: deletedRows, error } = await supabase
+      .from('checklists')
+      .delete()
+      .eq('id', id)
+      .select('id')
+    if (error) throw error
+    if (!deletedRows.length) {
+      throw new Error('Checklist could not be deleted. It may have changed or you may not have permission.')
+    }
+    return
+  }
+
+  if (!isLocalMode(config)) return remoteRequest(config, `checklists/${encodeURIComponent(id)}`, { method: 'DELETE' })
+
+  const records = readRecords()
+  delete records[id]
+  writeRecords(records)
+}
+
+export const removeAttachment = async (id, filePath) => {
+  const config = getApiConfig()
+
+  if (isSupabaseMode(config)) {
+    if (!filePath) throw new Error('The attachment path is missing.')
+
+    const { error: storageError } = await supabase.storage.from(FILES_BUCKET).remove([filePath])
+    if (storageError) throw storageError
+
+    const { data: deletedFiles, error: dbError } = await supabase
+      .from('files')
+      .delete()
+      .eq('checklist_id', id)
+      .eq('path', filePath)
+      .select('path')
+    if (dbError) throw dbError
+    if (!deletedFiles.length) throw new Error('Attachment could not be removed. It may not belong to a draft checklist.')
+    return
+  }
+
+  if (!isLocalMode(config)) return remoteRequest(config, `checklists/${encodeURIComponent(id)}/files/${encodeURIComponent(filePath)}`, { method: 'DELETE' })
 }
 
 export const pingApi = async () => {
