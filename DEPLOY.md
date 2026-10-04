@@ -1,219 +1,60 @@
-# ✅ Supabase Backend Setup — Complete
+# Static frontend deployment
 
-All files are ready. Here's your complete deployment package.
+This repository's browser app is a Vite single-page application. Deploy the repository root as a static Vite project; no Express server or server-side environment variables are required.
 
-## 📦 What Was Created
+## Deploy to Vercel
 
-### 1. Database Migration
-**Location:** `supabase/migrations/20260907125400_create_checklist_tables.sql`
+1. Push the repository to GitHub, sign in at [vercel.com](https://vercel.com), choose **Add New… → Project**, and import the AQAT GitHub repository.
+2. In project setup, use the repository root as the Root Directory and select **Vite** if Vercel does not detect it automatically. Use:
+   - Build Command: `npm run build`
+   - Output Directory: `dist`
+   - Install Command: `npm install` (the default)
+3. In **Environment Variables**, add these for Production (and Preview too if you use preview deployments):
+   - `VITE_SUPABASE_URL` — your Supabase project URL, such as `https://your-project-ref.supabase.co`
+   - `VITE_SUPABASE_PUBLISHABLE_KEY` — the project's publishable browser key from the Supabase dashboard
 
-**What it does:**
-- Creates `checklists` table (stores all checklist data)
-- Creates `files` table (tracks file uploads)
-- Enables Row-Level Security (RLS)
-- Creates 7 security policies (users see only their data)
-- Creates 4 performance indexes
-- Grants proper database permissions
+   The app also supports the legacy `VITE_SUPABASE_ANON_KEY` as an alternative to the publishable key. Set one key variable, not both. These are browser-visible credentials; never put a Supabase secret/service-role key in Vite variables. `VITE_DEFAULT_API_BASE_URL` is optional and only prefills the Settings panel's custom API URL.
+4. Save the project settings and let Vercel build and deploy. After adding or changing environment variables, trigger a new deployment because Vite embeds them at build time.
+5. Copy the deployed production URL (for example, `https://your-project.vercel.app`) and configure Supabase Auth as described below.
 
-**Security:** ✅ Zero secrets exposed, RLS-enforced access control
+`vercel.json` rewrites application paths to `index.html`, so direct visits and refreshes on `/staff`, `/admin`, and `/login` load the client router. `public/_redirects` provides the equivalent fallback if deploying the static `dist/` output to Netlify.
 
----
+## Update Supabase Auth URLs after deployment
 
-## 📚 Documentation (Read in Order)
+In the Supabase dashboard, open **Authentication → URL Configuration** after you have the live URL:
 
-### 1. QUICK_START.md (5 minutes) ⭐
-- **What:** Simple 3-step checklist to deploy
-- **Read this first** to understand the process
-- Includes troubleshooting table
+1. Set **Site URL** to the production origin, for example `https://your-project.vercel.app` (no trailing path). Supabase uses this as the default URL for confirmation emails when the app does not supply a custom redirect.
+2. Under **Redirect URLs**, add `https://your-project.vercel.app/**`. If you use a custom domain, add its URL pattern too. Keep `http://localhost:5173/**` only if you still need local development redirects.
+3. Save the changes. This ensures confirmation links use the live site as their default instead of localhost.
 
-### 2. SUPABASE_SETUP.md (Reference)
-- **What:** Complete setup guide with detailed explanations
-- **Use this if:** You need to understand why each step exists
-- Covers: schema, RLS policies, testing, security notes
+## Promote an account to Admin manually
 
-### 3. MIGRATION_REVIEW.md (Reference)
-- **What:** Line-by-line explanation of the SQL migration
-- **Use this if:** You want to understand the database design
-- Includes: column mappings, field conversions, policy explanations
+Run this yourself in the Supabase SQL Editor, replacing the email with the exact account to promote. It updates only the matching profile and raises an error if exactly one profile was not updated:
 
-### 4. SQL_REFERENCE.md (Reference)
-- **What:** Complete SQL with detailed comments
-- **Use this if:** Manually running SQL in the dashboard
+```sql
+do $$
+declare
+  updated_count integer;
+begin
+  update public.profiles as profile
+  set role = 'admin'
+  from auth.users as auth_user
+  where profile.id = auth_user.id
+    and lower(auth_user.email) = lower('person@example.com');
 
----
-
-## ✅ Code Status
-
-### Your checklistApi.js — NO CHANGES NEEDED
-
-The existing `src/api/checklistApi.js` is already fully compatible:
-
-| Function | Supabase Mode | Status |
-|----------|---------------|--------|
-| createChecklist | ✅ Sets owner, generates UUID | Ready |
-| listChecklists | ✅ RLS filters to current user | Ready |
-| getChecklist | ✅ Merges JSONB fields correctly | Ready |
-| saveHeader | ✅ Patches data field | Ready |
-| saveItem | ✅ Patches items in data | Ready |
-| uploadFile | ✅ Uploads to storage + tracks in files table | Ready |
-| submitChecklist | ✅ Updates status + submitted_at | Ready |
-| reopenChecklist | ✅ Resets status to draft | Ready |
-
-**Field Mapping:** All camelCase ↔ snake_case conversions already correct ✅
-
----
-
-## 🚀 Deployment Steps (Copy-Paste Ready)
-
-### Step 1: Create Storage Bucket (5 min)
-
-**Manual in Supabase Dashboard:**
-1. https://app.supabase.com → Your Project
-2. **Storage** → **New bucket**
-3. Name: `aqat-attachments`
-4. Privacy: **Private**
-5. Create
-
-### Step 2A: Run Migration via CLI (Recommended) (2 min)
-
-```bash
-cd C:\Users\lamec\Desktop\aqat
-supabase link --project-ref qiarhrcankopijakeifr
-supabase db push
+  get diagnostics updated_count = row_count;
+  if updated_count <> 1 then
+    raise exception 'Expected to promote exactly one profile; updated %.', updated_count;
+  end if;
+end;
+$$;
 ```
 
-### Step 2B: Alternative - Manual SQL (2 min)
+Check current account roles:
 
-1. https://app.supabase.com → Your Project
-2. **SQL Editor** → **New query**
-3. Copy entire contents of: `supabase/migrations/20260907125400_create_checklist_tables.sql`
-4. Paste into SQL editor
-5. Run (Ctrl+Enter)
-
-### Step 3: Verify in Dashboard (2 min)
-
-✅ **Check tables exist:**
-- SQL Editor or Tables section should show `checklists` and `files` tables
-
-✅ **Check RLS enabled:**
-- Click `checklists` → **Policies** tab → Should see 4 policies
-- Click `files` → **Policies** tab → Should see 3 policies
-
-✅ **Check indexes:**
-- Click `checklists` → **Indexes** tab → Should see 3 indexes
-
-### Step 4: Test in App (2 min)
-
+```sql
+select auth_user.email, profile.role
+from auth.users as auth_user
+left join public.profiles as profile on profile.id = auth_user.id
+order by lower(auth_user.email);
 ```
-1. npm run dev  (or your dev command)
-2. Open http://localhost:5173
-3. Click ⚙️ (Settings gear icon)
-4. Set Mode to: supabase
-5. Sign in (create account if needed)
-6. Click "Test Connection" → Should see: ✅ "Connected to Supabase"
-7. Fill subject details + complete items + Submit
-8. Check Dashboard → should see checklist in database
-9. Refresh page → data persists ✅
-```
-
----
-
-## 📋 Checklist Before Running
-
-- [ ] You have project folder: `C:\Users\lamec\Desktop\aqat`
-- [ ] Environment variables set: `.env` has VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY
-- [ ] You have access to Supabase project: `qiarhrcankopijakeifr`
-- [ ] Optional: Supabase CLI installed (`supabase --version`)
-- [ ] You've read QUICK_START.md
-
----
-
-## 🔒 Security Verification
-
-### ✅ Verified Safe:
-- No service role key in code
-- No hardcoded auth tokens
-- Publishable key only (safe to commit)
-- RLS policies enforce user isolation
-- Users can only see/edit their own data
-- Files inherit access through parent checklist
-
-### ✅ Follow These Rules:
-- ✅ DO: Keep .env committed with VITE_* variables
-- ✅ DO: Enable email verification in Supabase Auth
-- ❌ DON'T: Expose service role key anywhere
-- ❌ DON'T: Disable RLS on these tables
-- ❌ DON'T: Modify policies without understanding RLS
-
----
-
-## ❓ Common Questions
-
-**Q: Do I need to change any code?**
-A: No, `src/api/checklistApi.js` already works with this schema.
-
-**Q: What if something breaks?**
-A: Check troubleshooting in QUICK_START.md, or delete tables and re-run migration.
-
-**Q: Can I test locally first?**
-A: Yes, use `local` mode in Settings to test without backend first.
-
-**Q: How do I switch between local and Supabase modes?**
-A: Settings gear icon → Change Mode dropdown. Data is separate per mode.
-
-**Q: What about user roles/admins?**
-A: Current policies support single user model. For admin features, policies can be extended.
-
-**Q: Can I migrate existing local data?**
-A: Not automatically. You'd need to export from localStorage and import to Supabase separately.
-
----
-
-## 📞 Support
-
-If you get stuck:
-
-1. **Check:** QUICK_START.md troubleshooting section
-2. **Review:** Supabase dashboard logs (SQL Editor shows recent errors)
-3. **Verify:** Table and policy creation succeeded
-4. **Re-run:** Migration (it's idempotent, safe to run multiple times)
-
----
-
-## Next Steps
-
-✅ **Now:** Read QUICK_START.md
-
-✅ **Then:** Run migration (CLI or SQL)
-
-✅ **Then:** Create storage bucket
-
-✅ **Then:** Test in app
-
-✅ **Finally:** Create a test checklist and verify persistence
-
----
-
-## 📁 Files Summary
-
-```
-aqat/
-├── supabase/
-│   └── migrations/
-│       └── 20260907125400_create_checklist_tables.sql  ← Run this
-├── src/
-│   ├── api/
-│   │   └── checklistApi.js  ← Already compatible, no changes
-│   ├── utils/supabase/
-│   │   └── client.js  ← Already set up correctly
-│   └── ...
-├── QUICK_START.md  ← 📍 Read first
-├── SUPABASE_SETUP.md  ← Read for details
-├── MIGRATION_REVIEW.md  ← Read to understand schema
-├── SQL_REFERENCE.md  ← Reference for SQL
-└── .env  ← Already has credentials
-```
-
----
-
-**Ready to deploy?** → Open QUICK_START.md and follow the 3 steps!
