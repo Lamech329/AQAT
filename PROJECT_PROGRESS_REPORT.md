@@ -6,7 +6,7 @@
 
 - The active UI is the React/Vite application in `src/`.
 - Checklist, profile, file metadata, and attachment operations use the signed-in browser Supabase client and are authorized by database and Storage RLS.
-- The optional Express server is health-check-only; it does not handle checklist or file data.
+- The repository deploys as a static frontend; there is no application backend service.
 - Local storage mode remains available for staff workflows. The Admin portal requires Supabase authentication.
 
 ## Roles and access

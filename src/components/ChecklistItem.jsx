@@ -86,7 +86,7 @@ export function ChecklistItem({ item, itemState, disabled, readOnly, onStatusCha
                     </label>
                     {attachment && (
                       <div className="attachment-status">
-                        <span className="attachment-name">{attachment.name}</span>
+                        <span className="attachment-name" title={attachment.name}>{attachment.name}</span>
                         <button
                           type="button"
                           className="attachment-remove"
@@ -120,7 +120,7 @@ export function ChecklistItem({ item, itemState, disabled, readOnly, onStatusCha
               </label>
               {itemState?.attachment && (
                 <div className="attachment-status">
-                  <span className="attachment-name">Attached: {itemState.attachment.name}</span>
+                  <span className="attachment-name" title={itemState.attachment.name}>Attached: {itemState.attachment.name}</span>
                   <button
                     type="button"
                     className="attachment-remove"

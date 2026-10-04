@@ -1,6 +1,6 @@
 # Static frontend deployment
 
-This repository's browser app is a Vite single-page application. Deploy the repository root as a static Vite project; no Express server or server-side environment variables are required.
+This repository's browser app is a Vite single-page application. Deploy the repository root as a static Vite project; no backend service or server-side environment variables are required.
 
 ## Deploy to Vercel
 

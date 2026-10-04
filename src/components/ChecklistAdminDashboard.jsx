@@ -140,11 +140,19 @@ export function ChecklistAdminDashboard() {
         }))
         const { data: activity, error: activityError } = await supabase
           .from('activity_logs')
-          .select('action, actor_email, created_at')
+          .select('actor_email, created_at')
           .eq('checklist_id', record.id)
           .order('created_at', { ascending: false })
+          .order('id', { ascending: false })
+          .limit(1)
+          .maybeSingle()
         if (activityError) throw activityError
-        setSelected({ ...record, activityLog: activity.map((entry) => ({ action: entry.action, user: entry.actor_email || 'User', at: entry.created_at })) })
+        setSelected({
+          ...record,
+          lastEdit: activity
+            ? { user: activity.actor_email || 'Unknown user', at: activity.created_at }
+            : null,
+        })
       }
     } catch (fileError) {
       setError(fileError.message ?? 'Unable to load files.')
@@ -339,6 +347,9 @@ function sortValue(record, key) {
 }
 
 function FilePanel({ record, files, loading, onClose, onDownload, onDownloadAll, onPrint }) {
-  const activity = record.activityLog ?? []
-  return <div className="settings-overlay" role="presentation" onMouseDown={onClose}><aside className="settings-panel file-panel" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}><div className="settings-heading"><div><p className="eyebrow">Compliance files</p><h2>{record.header?.subjectCode || 'Checklist'} attachments</h2></div><button className="close-button" type="button" onClick={onClose}>×</button></div><div className="settings-actions"><button className="secondary-button" type="button" onClick={onPrint}>Print summary</button><button className="submit-button" type="button" disabled={!files.length} onClick={onDownloadAll}>Download all</button></div>{loading ? <p>Loading files...</p> : files.length === 0 ? <p className="required-note">No attachments found.</p> : <div className="file-list">{files.map((file) => <div className="file-row" key={`${file.path || file.name}-${file.itemId || ''}`}><div><strong>{file.name}</strong><small>{file.itemLabel}</small></div><button className="secondary-button" type="button" onClick={() => onDownload(file)}>Download</button></div>)}</div>}<div className="audit-panel"><p className="eyebrow">Activity</p><h3>Audit log</h3>{activity.length === 0 ? <p className="required-note">No local activity recorded.</p> : activity.slice().reverse().map((entry, index) => <p key={`${entry.at}-${index}`}><strong>{entry.action}</strong> by {entry.user} on {dateTime(entry.at)}</p>)}</div></aside></div>
+  const lastEdit = record.lastEdit ?? record.activityLog?.at(-1) ?? null
+  const editor = lastEdit?.user || lastEdit?.actor_email || 'Unknown user'
+  const editedAt = lastEdit?.at || lastEdit?.created_at
+
+  return <div className="settings-overlay" role="presentation" onMouseDown={onClose}><aside className="settings-panel file-panel" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}><div className="settings-heading"><div><p className="eyebrow">Compliance files</p><h2>{record.header?.subjectCode || 'Checklist'} attachments</h2></div><button className="close-button" type="button" onClick={onClose}>×</button></div><div className="settings-actions"><button className="secondary-button" type="button" onClick={onPrint}>Print summary</button><button className="submit-button" type="button" disabled={!files.length} onClick={onDownloadAll}>Download all</button></div>{loading ? <p>Loading files...</p> : files.length === 0 ? <p className="required-note">No attachments found.</p> : <div className="file-list">{files.map((file) => <div className="file-row" key={`${file.path || file.name}-${file.itemId || ''}`}><div><strong>{file.name}</strong><small>{file.itemLabel}</small></div><button className="secondary-button" type="button" onClick={() => onDownload(file)}>Download</button></div>)}</div>}<div className="audit-panel"><p className="eyebrow">Latest edit</p>{lastEdit ? <p className="audit-bar"><strong>Last edited by {editor}</strong><time dateTime={editedAt}> — {dateTime(editedAt)}</time></p> : <p className="audit-bar audit-empty">No edits recorded</p>}</div></aside></div>
 }

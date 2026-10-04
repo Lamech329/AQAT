@@ -2,7 +2,7 @@
 
 ## Overview
 
-This guide walks you through setting up the Supabase database and Storage for the AQAT Checklist application. The frontend uses the signed-in browser Supabase client directly; the optional Express server does not perform checklist or file data operations.
+This guide walks you through setting up the Supabase database and Storage for the AQAT Checklist application. The static frontend uses the signed-in browser Supabase client directly for checklist and file operations.
 
 ## What's Been Created
 
