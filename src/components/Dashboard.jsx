@@ -50,8 +50,16 @@ export function Dashboard({ checklists, onNew, onOpen, onView, onEdit, theme, on
               <tbody>
                 {checklists.map((checklist) => {
                   const missing = getMissingCopySlots(checklist.items ?? {})
-                  const totalSlots = MARKED_ASSESSMENTS.length * COPY_SLOTS.length
-                  const completeSlots = totalSlots - missing.length
+                  const requiredAssessments = MARKED_ASSESSMENTS.filter((assessment) => checklist.items?.[assessment.id]?.status !== 'na')
+                  const totalSlots = requiredAssessments.reduce((total, assessment) => (
+                    total + Math.max(1, checklist.items?.[assessment.id]?.assessmentInstances?.length ?? 1) * COPY_SLOTS.length
+                  ), 0)
+                  const completeSlots = requiredAssessments.reduce((total, assessment) => (
+                    total + (checklist.items?.[assessment.id]?.assessmentInstances ?? []).reduce(
+                      (sum, instance) => sum + getCopyProgress(instance).uploaded,
+                      0,
+                    )
+                  ), 0)
                   return (
                   <tr key={checklist.id}>
                     <td>{checklist.subjectName || 'Untitled checklist'}</td>
@@ -62,11 +70,14 @@ export function Dashboard({ checklists, onNew, onOpen, onView, onEdit, theme, on
                       <strong>{completeSlots}/{totalSlots} slots</strong>
                       <div className="dashboard-copy-progress">
                         {MARKED_ASSESSMENTS.map((assessment) => {
-                          const progress = getCopyProgress(checklist.items ?? {}, assessment.id)
-                          return <span key={assessment.id} title={`${assessment.label}: ${progress.uploaded}/${progress.required}`} className={progress.uploaded === progress.required ? 'copy-progress-complete' : ''}>{assessment.order} {progress.uploaded}/3</span>
+                          const state = checklist.items?.[assessment.id] ?? {}
+                          const instances = state.assessmentInstances ?? []
+                          const progress = instances.reduce((sum, instance) => sum + getCopyProgress(instance).uploaded, 0)
+                          const required = state.status === 'na' ? 0 : Math.max(1, instances.length) * COPY_SLOTS.length
+                          return <span key={assessment.id} title={`${assessment.label}: ${state.status === 'na' ? 'N/A' : `${progress}/${required}`}`} className={progress === required ? 'copy-progress-complete' : ''}>{assessment.order} {state.status === 'na' ? 'N/A' : `${progress}/${required}`}</span>
                         })}
                       </div>
-                      {missing.length > 0 && <details className="dashboard-missing"><summary>{missing.length} missing copy slot(s)</summary><ul>{missing.map(({ assessmentId, assessmentLabel, label }) => <li key={`${assessmentId}-${label}`}>{assessmentLabel}: {label}</li>)}</ul></details>}
+                      {missing.length > 0 && <details className="dashboard-missing"><summary>{missing.length} missing copy slot(s)</summary><ul>{missing.map(({ assessmentId, assessmentLabel, assessmentInstanceLabel, label }) => <li key={`${assessmentId}-${assessmentInstanceLabel}-${label}`}>{assessmentLabel}: {assessmentInstanceLabel ? `${assessmentInstanceLabel}: ` : ''}{label}</li>)}</ul></details>}
                     </td>
                     <td>{checklist.submittedAt ? new Date(checklist.submittedAt).toLocaleDateString() : '—'}</td>
                     <td className="dashboard-actions">

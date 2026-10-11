@@ -1,20 +1,31 @@
 import { useRef } from 'react'
 import { markerLabels } from '../data/checklistItems'
-import { COPY_SLOTS, getCopyProgress } from '../utils/assessmentCopies'
+import { COPY_SLOTS, getAssessmentName, getCopyProgress } from '../utils/assessmentCopies'
 
-export function ChecklistItem({ item, itemState, disabled, readOnly, onStatusChange, onFileChange, onCommentChange, onRemoveAttachment }) {
+const acceptedFileTypes = '.pdf,.doc,.docx,.xls,.xlsx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+
+export function ChecklistItem({
+  item,
+  itemState,
+  disabled,
+  readOnly,
+  onStatusChange,
+  onFileChange,
+  onCommentChange,
+  onRemoveAttachment,
+  onAddAssessmentInstance,
+  onRenameAssessmentInstance,
+  onRemoveAssessmentInstance,
+}) {
   const status = itemState?.status ?? ''
   const fileInputRef = useRef(null)
   const commentInputRef = useRef(null)
+  const instances = itemState?.assessmentInstances ?? []
 
   const handleStatusChange = (nextStatus) => {
     onStatusChange(nextStatus)
-    if (nextStatus === 'yes') {
-      requestAnimationFrame(() => fileInputRef.current?.click())
-    }
-    if (nextStatus === 'no') {
-      requestAnimationFrame(() => commentInputRef.current?.focus())
-    }
+    if (nextStatus === 'yes') requestAnimationFrame(() => fileInputRef.current?.click())
+    if (nextStatus === 'no') requestAnimationFrame(() => commentInputRef.current?.focus())
   }
 
   const handleRemoveAttachment = () => {
@@ -34,74 +45,94 @@ export function ChecklistItem({ item, itemState, disabled, readOnly, onStatusCha
         <fieldset className="status-controls" disabled={disabled || readOnly}>
           <legend className="sr-only">Document status</legend>
           <label className="status-option status-option-yes">
-            <input
-              type="radio"
-              name={`status-${item.id}`}
-              checked={status === 'yes'}
-              onChange={() => handleStatusChange('yes')}
-            />
+            <input type="radio" name={`status-${item.id}`} checked={status === 'yes'} onChange={() => handleStatusChange('yes')} />
             Yes
           </label>
           <label className="status-option status-option-no">
-            <input
-              type="radio"
-              name={`status-${item.id}`}
-              checked={status === 'no'}
-              onChange={() => handleStatusChange('no')}
-            />
+            <input type="radio" name={`status-${item.id}`} checked={status === 'no'} onChange={() => handleStatusChange('no')} />
             No
           </label>
           <label className="status-option status-option-na">
-            <input
-              type="radio"
-              name={`status-${item.id}`}
-              checked={status === 'na'}
-              onChange={() => handleStatusChange('na')}
-            />
+            <input type="radio" name={`status-${item.id}`} checked={status === 'na'} onChange={() => handleStatusChange('na')} />
             N/A
           </label>
         </fieldset>
         <div className="attachment-section">
           {item.marker === 'copies' ? (
-            <div className="copy-slot-list">
-              <div className="copy-progress">
-                <strong>{getCopyProgress(itemState ? { [item.id]: itemState } : {}, item.id).uploaded}/3 copies uploaded</strong>
-                <progress max="3" value={getCopyProgress(itemState ? { [item.id]: itemState } : {}, item.id).uploaded} />
-              </div>
-              {COPY_SLOTS.map((slot) => {
-                const attachment = itemState?.attachments?.[slot.id]
+            <div className="assessment-instance-list">
+              {instances.map((instance) => {
+                const progress = getCopyProgress(instance)
                 return (
-                  <div className="copy-slot" key={slot.id}>
-                    <label className="attachment-control">
-                      <span>{slot.label} copy <em className={attachment ? 'slot-uploaded' : 'slot-missing'}>{attachment ? 'Uploaded' : 'Missing'}</em></span>
-                      <input
-                        type="file"
-                        accept=".pdf,.doc,.docx,.xls,.xlsx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                        disabled={disabled || readOnly}
-                        onChange={(event) => {
-                          onFileChange(event.target.files?.[0], slot.id)
-                          event.target.value = ''
-                        }}
-                      />
-                    </label>
-                    {attachment && (
-                      <div className="attachment-status">
-                        <span className="attachment-name" title={attachment.name}>{attachment.name}</span>
-                        <button
-                          type="button"
-                          className="attachment-remove"
-                          onClick={() => onRemoveAttachment?.(item.id, attachment, slot.id)}
+                  <section className="assessment-instance" key={instance.id}>
+                    <div className="assessment-instance-heading">
+                      <label>
+                        <span className="sr-only">Assessment name</span>
+                        <input
+                          type="text"
+                          value={instance.label}
                           disabled={disabled || readOnly}
-                          aria-label={`Remove ${slot.label.toLowerCase()} copy: ${attachment.name}`}
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                          onChange={(event) => onRenameAssessmentInstance(item.id, instance.id, event.target.value)}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        className="attachment-remove"
+                        disabled={disabled || readOnly}
+                        onClick={() => onRemoveAssessmentInstance(item.id, instance)}
+                      >
+                        Remove assessment
+                      </button>
+                    </div>
+                    <div className="copy-progress">
+                      <strong>{progress.uploaded}/3 copies uploaded</strong>
+                      <progress max="3" value={progress.uploaded} />
+                    </div>
+                    <div className="copy-slot-list">
+                      {COPY_SLOTS.map((slot) => {
+                        const attachment = instance.attachments?.[slot.id]
+                        return (
+                          <div className="copy-slot" key={slot.id}>
+                            <label className="attachment-control">
+                              <span>{slot.label} copy <em className={attachment ? 'slot-uploaded' : 'slot-missing'}>{attachment ? 'Uploaded' : 'Missing'}</em></span>
+                              <input
+                                type="file"
+                                accept={acceptedFileTypes}
+                                disabled={disabled || readOnly}
+                                onChange={(event) => {
+                                  onFileChange(event.target.files?.[0], instance.id, instance.label, slot.id)
+                                  event.target.value = ''
+                                }}
+                              />
+                            </label>
+                            {attachment && (
+                              <div className="attachment-status">
+                                <span className="attachment-name" title={attachment.name}>{attachment.name}</span>
+                                <button
+                                  type="button"
+                                  className="attachment-remove"
+                                  onClick={() => onRemoveAttachment?.(item.id, attachment, instance.id, slot.id)}
+                                  disabled={disabled || readOnly}
+                                  aria-label={`Remove ${slot.label.toLowerCase()} copy: ${attachment.name}`}
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </section>
                 )
               })}
-              {itemState?.attachment && <p className="legacy-attachment">Existing unlabelled attachment retained: {itemState.attachment.name}. Add all three labelled copies.</p>}
+              <button
+                type="button"
+                className="secondary-button add-assessment-button"
+                disabled={disabled || readOnly}
+                onClick={() => onAddAssessmentInstance(item.id)}
+              >
+                Add another {getAssessmentName(item.id).toLowerCase()}
+              </button>
             </div>
           ) : (
             <>
@@ -110,7 +141,7 @@ export function ChecklistItem({ item, itemState, disabled, readOnly, onStatusCha
                 <input
                   type="file"
                   ref={fileInputRef}
-                  accept=".pdf,.doc,.docx,.xls,.xlsx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  accept={acceptedFileTypes}
                   disabled={disabled || readOnly}
                   onChange={(event) => {
                     onFileChange(event.target.files?.[0])

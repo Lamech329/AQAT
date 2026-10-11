@@ -3,6 +3,7 @@ import JSZip from 'jszip'
 import { deleteChecklist, getApiConfig, getChecklist, listChecklists } from '../api/checklistApi'
 import { flatChecklistItems } from '../data/checklistItems'
 import { COPY_SLOTS, getMissingCopySlots } from '../utils/assessmentCopies'
+import { printChecklistSummary } from '../utils/checklistPrint'
 import { summarizeAdminRecords } from '../utils/adminSummary'
 import { supabase } from '../utils/supabase/client'
 import { ThemeToggle } from './ThemeToggle'
@@ -26,28 +27,16 @@ function recordFiles(record) {
   return Object.entries(record.items ?? {}).flatMap(([itemId, item]) => {
     const itemLabel = flatChecklistItems.find((checklistItem) => checklistItem.id === itemId)?.label ?? itemId
     const legacy = item.attachment ? [{ ...item.attachment, itemId, itemLabel: `${itemLabel} (unassigned legacy upload)` }] : []
-    const copies = COPY_SLOTS.flatMap((slot) => item.attachments?.[slot.id] ? [{
-      ...item.attachments[slot.id],
+    const copies = (item.assessmentInstances ?? []).flatMap((instance) => COPY_SLOTS.flatMap((slot) => instance.attachments?.[slot.id] ? [{
+      ...instance.attachments[slot.id],
       itemId,
+      assessmentInstanceId: instance.id,
+      assessmentInstanceLabel: instance.label,
       copySlot: slot.id,
-      itemLabel: `${itemLabel} — ${slot.label}`,
-    }] : [])
+      itemLabel: `${itemLabel} — ${instance.label} — ${slot.label}`,
+    }] : []))
     return [...legacy, ...copies]
   })
-}
-
-function printSummary(record) {
-  const rows = flatChecklistItems.map((item) => {
-    const state = record.items?.[item.id] ?? {}
-    const attachments = item.marker === 'copies'
-      ? COPY_SLOTS.map(({ id, label }) => `${label}: ${state.attachments?.[id]?.name || 'Missing'}`).join('<br>')
-      : state.attachment?.name || '—'
-    return `<tr><td>${item.order}</td><td>${item.label}</td><td>${state.status || '—'}</td><td>${attachments}</td></tr>`
-  }).join('')
-  const printWindow = window.open('', '_blank', 'width=900,height=700')
-  if (!printWindow) return
-  printWindow.document.write(`<html><head><title>AQAT Checklist ${record.header?.subjectCode || ''}</title><style>body{font-family:Arial,sans-serif;padding:32px;color:#172033}table{width:100%;border-collapse:collapse}th,td{padding:8px;border:1px solid #cbd5e1;text-align:left;vertical-align:top}h1{margin-bottom:4px}.meta{color:#475569;margin-bottom:24px}</style></head><body><h1>AQAT Subject File Checklist</h1><p class="meta">${record.header?.subjectCode || ''} — ${record.header?.subjectName || ''} — ${record.header?.department || ''} — ${record.header?.staffName || ''}</p><table><thead><tr><th>#</th><th>Required document</th><th>Status</th><th>Attachments</th></tr></thead><tbody>${rows}</tbody></table><script>window.onload=()=>{window.print();window.close()}</script></body></html>`)
-  printWindow.document.close()
 }
 
 export function ChecklistAdminDashboard() {
@@ -135,8 +124,13 @@ export function ChecklistAdminDashboard() {
           const itemId = file.item_id ?? legacyItemId
           const itemLabel = flatChecklistItems.find((item) => item.id === itemId)?.label ?? file.name
           const legacyCopySlot = itemId && Object.entries(record.items?.[itemId]?.attachments ?? {}).find(([, attachment]) => attachment?.path === file.path)?.[0]
-          const copySlotLabel = COPY_SLOTS.find((slot) => slot.id === (file.copy_slot ?? legacyCopySlot))?.label
-          return { ...file, itemLabel: copySlotLabel ? `${itemLabel} — ${copySlotLabel}` : itemLabel }
+          const copySlot = file.copy_slot ?? legacyCopySlot
+          const copySlotLabel = COPY_SLOTS.find((slot) => slot.id === copySlot)?.label
+          const instanceLabel = record.items?.[itemId]?.assessmentInstances?.find(
+            (instance) => instance.id === file.assessment_instance_id,
+          )?.label
+          const assessmentLabel = [instanceLabel, copySlotLabel].filter(Boolean).join(' — ')
+          return { ...file, itemLabel: assessmentLabel ? `${itemLabel} — ${assessmentLabel}` : itemLabel }
         }))
         const { data: activity, error: activityError } = await supabase
           .from('activity_logs')
@@ -319,7 +313,7 @@ export function ChecklistAdminDashboard() {
         </div>
         <div className="pagination"><span>{filteredRecords.length} checklist(s)</span><div><button className="secondary-button" disabled={page === 1} onClick={() => setPage((current) => current - 1)}>Previous</button><span>Page {page} of {pageCount}</span><button className="secondary-button" disabled={page === pageCount} onClick={() => setPage((current) => current + 1)}>Next</button></div></div>
       </section>
-      {selected && <FilePanel record={selected} files={files} loading={filesLoading} onClose={() => setSelected(null)} onDownload={downloadFile} onDownloadAll={downloadAll} onPrint={() => printSummary(selected)} />}
+      {selected && <FilePanel record={selected} files={files} loading={filesLoading} onClose={() => setSelected(null)} onDownload={downloadFile} onDownloadAll={downloadAll} onPrint={() => printChecklistSummary(selected)} />}
     </main>
   )
 }

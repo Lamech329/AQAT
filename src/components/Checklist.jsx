@@ -1,6 +1,18 @@
 import { ChecklistItem } from './ChecklistItem'
 
-export function Checklist({ items, itemState, headerComplete, readOnly, onStatusChange, onFileChange, onCommentChange, onRemoveAttachment }) {
+export function Checklist({
+  items,
+  itemState,
+  headerComplete,
+  readOnly,
+  onStatusChange,
+  onFileChange,
+  onCommentChange,
+  onRemoveAttachment,
+  onAddAssessmentInstance,
+  onRenameAssessmentInstance,
+  onRemoveAssessmentInstance,
+}) {
   let previousResolved = true
   let completeCount = 0
 
@@ -19,9 +31,12 @@ export function Checklist({ items, itemState, headerComplete, readOnly, onStatus
         disabled={disabled}
         readOnly={readOnly}
         onStatusChange={(status) => onStatusChange(item.id, status)}
-        onFileChange={(file, copySlot) => onFileChange(item.id, file, copySlot)}
+        onFileChange={(file, instanceId, instanceLabel, copySlot) => onFileChange(item.id, file, instanceId, instanceLabel, copySlot)}
         onCommentChange={(comments) => onCommentChange(item.id, comments)}
-        onRemoveAttachment={(itemId, attachment, copySlot) => onRemoveAttachment(itemId, attachment, copySlot)}
+        onRemoveAttachment={(itemId, attachment, instanceId, copySlot) => onRemoveAttachment(itemId, attachment, instanceId, copySlot)}
+        onAddAssessmentInstance={onAddAssessmentInstance}
+        onRenameAssessmentInstance={onRenameAssessmentInstance}
+        onRemoveAssessmentInstance={onRemoveAssessmentInstance}
       />
     )
   })

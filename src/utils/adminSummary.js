@@ -1,13 +1,8 @@
-import { flatChecklistItems } from '../data/checklistItems.js'
-import { COPY_SLOTS, getMissingCopySlots } from './assessmentCopies.js'
+import { COPY_SLOTS, getMissingChecklistRequirements } from './assessmentCopies.js'
 
 function missingRequirements(record) {
-  const missingItems = flatChecklistItems
-    .filter((item) => !record.items?.[item.id]?.status)
-    .map((item) => `${item.order}. ${item.label} (status unresolved)`)
-  const missingCopies = getMissingCopySlots(record.items ?? {})
-    .map(({ assessmentLabel, label }) => `${assessmentLabel}: ${label} copy`)
-  return [...missingItems, ...missingCopies]
+  return getMissingChecklistRequirements(record.items ?? {}, record.header)
+    .flatMap(({ label, missing }) => missing.map((requirement) => `${label}: ${requirement}`))
 }
 
 export function summarizeAdminRecords(records) {

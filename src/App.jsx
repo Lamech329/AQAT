@@ -17,6 +17,8 @@ import {
   uploadFile,
 } from './api/checklistApi'
 import { flatChecklistItems } from './data/checklistItems'
+import { createAssessmentInstance, getMissingChecklistRequirements } from './utils/assessmentCopies'
+import { printChecklistSummary } from './utils/checklistPrint'
 import { HeaderForm } from './components/HeaderForm'
 import { Checklist } from './components/Checklist'
 import { FooterComments } from './components/FooterComments'
@@ -30,7 +32,6 @@ import Login from './pages/Login'
 import AdminDashboard from './pages/AdminDashboard'
 import { useAuth } from './context/AuthContext'
 import { dashboardPath } from './auth/roles'
-import { getMissingCopySlots } from './utils/assessmentCopies'
 import './style.css'
 
 const THEME_STORAGE_KEY = 'aqat-theme'
@@ -79,9 +80,11 @@ function ChecklistWorkspace() {
     () => Object.values(checklist.header).every((value) => String(value).trim() !== ''),
     [checklist.header],
   )
-  const allResolved = flatChecklistItems.every((item) => Boolean(checklist.items[item.id]?.status))
-  const missingCopySlots = useMemo(() => getMissingCopySlots(checklist.items), [checklist.items])
-  const canSubmit = headerComplete && allResolved && missingCopySlots.length === 0 && checklist.status === 'draft'
+  const missingRequirements = useMemo(
+    () => getMissingChecklistRequirements(checklist.items, checklist.header),
+    [checklist.items, checklist.header],
+  )
+  const canSubmit = missingRequirements.length === 0 && checklist.status === 'draft'
 
   const openRecord = async (id, nextView) => {
     const record = await getChecklist(id)
@@ -122,17 +125,123 @@ function ChecklistWorkspace() {
     saveItem(current.id, itemId, item)
   }
 
-  const handleFileChange = async (itemId, file, copySlot = null) => {
+  const handleStatusChange = async (itemId, status) => {
+    const current = checklistRef.current
+    const currentItem = current.items[itemId] ?? {}
+    if (status === 'na') {
+      const attachments = [
+        currentItem.attachment,
+        ...Object.values(currentItem.assessmentInstances ?? []).flatMap((instance) => Object.values(instance.attachments ?? {})),
+      ].filter(Boolean)
+      if (attachments.length) {
+        const removeFiles = window.confirm('Set this criterion to N/A? Choose OK to remove its attached files; Cancel keeps them.')
+        if (removeFiles) {
+          try {
+            for (const attachment of attachments) {
+              if (attachment.path) await removeAttachment(current.id, attachment.path)
+            }
+            const assessmentInstances = (currentItem.assessmentInstances ?? []).map((instance) => ({
+              ...instance,
+              attachments: Object.fromEntries(Object.keys(instance.attachments ?? {}).map((slot) => [slot, null])),
+            }))
+            updateItem(itemId, { status, attachment: null, assessmentInstances })
+            return
+          } catch (error) {
+            alert(`Failed to remove attached files: ${error.message}`)
+            return
+          }
+        }
+      }
+    }
+    updateItem(itemId, { status })
+  }
+
+  const handleAddAssessmentInstance = (itemId) => {
+    const currentItem = checklistRef.current.items[itemId] ?? {}
+    const instances = currentItem.assessmentInstances ?? []
+    const nextNumber = instances.reduce((max, instance) => {
+      const number = Number(instance.label.match(/(\d+)$/)?.[1] ?? 0)
+      return Math.max(max, number)
+    }, 0) + 1
+    updateItem(itemId, { assessmentInstances: [...instances, createAssessmentInstance(itemId, nextNumber)] })
+  }
+
+  const handleRenameAssessmentInstance = (itemId, instanceId, label) => {
+    const currentItem = checklistRef.current.items[itemId] ?? {}
+    const assessmentInstances = (currentItem.assessmentInstances ?? []).map((instance) => (
+      instance.id === instanceId ? { ...instance, label } : instance
+    ))
+    updateItem(itemId, { assessmentInstances })
+  }
+
+  const handleRemoveAssessmentInstance = async (itemId, instance) => {
+    if (!window.confirm(`Remove "${instance.label}" and its attached files? This cannot be undone.`)) return
+    try {
+      for (const attachment of Object.values(instance.attachments ?? {})) {
+        if (attachment?.path) await removeAttachment(checklistRef.current.id, attachment.path)
+      }
+      const current = checklistRef.current
+      const currentItem = current.items[itemId] ?? {}
+      updateItem(itemId, {
+        assessmentInstances: (currentItem.assessmentInstances ?? []).filter((candidate) => candidate.id !== instance.id),
+      })
+    } catch (error) {
+      alert(`Failed to remove assessment files: ${error.message}`)
+    }
+  }
+
+  const handleFileChange = async (itemId, file, assessmentInstanceId = null, assessmentInstanceLabel = null, copySlot = null) => {
     if (!file) return
     try {
       const current = checklistRef.current
-      const attachment = await uploadFile(current.id, file, itemId, copySlot)
-      const currentItem = checklistRef.current.items[itemId] ?? {}
+      const currentItem = current.items[itemId] ?? {}
+      const currentInstance = currentItem.assessmentInstances?.find((instance) => instance.id === assessmentInstanceId)
+      const previousAttachment = copySlot
+        ? currentInstance?.attachments?.[copySlot]
+        : currentItem.attachment
+      if (previousAttachment?.path) {
+        await removeAttachment(current.id, previousAttachment.path)
+        const latest = checklistRef.current
+        const latestItem = latest.items[itemId] ?? {}
+        const clearedItem = copySlot
+          ? {
+              ...latestItem,
+              assessmentInstances: (latestItem.assessmentInstances ?? []).map((instance) => (
+                instance.id === assessmentInstanceId
+                  ? { ...instance, attachments: { ...instance.attachments, [copySlot]: null } }
+                  : instance
+              )),
+            }
+          : { ...latestItem, attachment: null }
+        const clearedChecklist = {
+          ...latest,
+          items: { ...latest.items, [itemId]: clearedItem },
+        }
+        setChecklistRecord(clearedChecklist)
+        await saveItem(clearedChecklist.id, itemId, clearedItem)
+      }
+      const uploaded = await uploadFile(current.id, file, itemId, assessmentInstanceId, copySlot)
+      const latestChecklist = checklistRef.current
+      const latestItem = latestChecklist.items[itemId] ?? {}
+      const latestInstance = latestItem.assessmentInstances?.find((instance) => instance.id === assessmentInstanceId)
+      if (assessmentInstanceId && !latestInstance) {
+        if (uploaded.path) await removeAttachment(latestChecklist.id, uploaded.path)
+        throw new Error('The assessment instance was removed before its upload finished.')
+      }
+      const attachment = assessmentInstanceId
+        ? { ...uploaded, assessmentInstanceId, assessmentInstanceLabel: latestInstance.label, copySlot }
+        : uploaded
       const changes = copySlot
-        ? { attachments: { ...(currentItem.attachments ?? {}), [copySlot]: attachment } }
+        ? {
+            assessmentInstances: (latestItem.assessmentInstances ?? []).map((instance) => (
+              instance.id === assessmentInstanceId
+                ? { ...instance, attachments: { ...instance.attachments, [copySlot]: attachment } }
+                : instance
+            )),
+          }
         : { attachment }
-      const item = { ...currentItem, ...changes }
-      const updatedChecklist = { ...checklistRef.current, items: { ...checklistRef.current.items, [itemId]: item } }
+      const item = { ...latestItem, ...changes }
+      const updatedChecklist = { ...latestChecklist, items: { ...latestChecklist.items, [itemId]: item } }
       setChecklistRecord(updatedChecklist)
       await saveItem(updatedChecklist.id, itemId, item)
     } catch (error) {
@@ -140,7 +249,7 @@ function ChecklistWorkspace() {
     }
   }
 
-  const handleRemoveAttachment = async (itemId, attachment, copySlot = null) => {
+  const handleRemoveAttachment = async (itemId, attachment, assessmentInstanceId = null, copySlot = null) => {
     if (!attachment) return
     try {
       if (attachment.path) {
@@ -149,7 +258,13 @@ function ChecklistWorkspace() {
       const current = checklistRef.current
       const currentItem = current.items[itemId] ?? {}
       const changes = copySlot
-        ? { attachments: { ...(currentItem.attachments ?? {}), [copySlot]: null } }
+        ? {
+            assessmentInstances: (currentItem.assessmentInstances ?? []).map((instance) => (
+              instance.id === assessmentInstanceId
+                ? { ...instance, attachments: { ...instance.attachments, [copySlot]: null } }
+                : instance
+            )),
+          }
         : { attachment: null }
       const item = { ...currentItem, ...changes }
       const updatedChecklist = { ...current, items: { ...current.items, [itemId]: item } }
@@ -244,7 +359,7 @@ function ChecklistWorkspace() {
           itemState={checklist.items}
           footer={checklist.footer}
           submittedAt={checklist.submittedAt}
-          onPrint={() => window.print()}
+          onPrint={() => printChecklistSummary(checklist)}
           onEdit={handleEdit}
           onDashboard={returnToDashboard}
           theme={theme}
@@ -277,17 +392,23 @@ function ChecklistWorkspace() {
         items={flatChecklistItems}
         itemState={checklist.items}
         headerComplete={headerComplete}
-        onStatusChange={(itemId, status) => updateItem(itemId, { status })}
+        onStatusChange={handleStatusChange}
         onFileChange={handleFileChange}
         onCommentChange={(itemId, comments) => updateItem(itemId, { comments })}
         onRemoveAttachment={handleRemoveAttachment}
+        onAddAssessmentInstance={handleAddAssessmentInstance}
+        onRenameAssessmentInstance={handleRenameAssessmentInstance}
+        onRemoveAssessmentInstance={handleRemoveAssessmentInstance}
       />
       <FooterComments footer={checklist.footer} onChange={updateFooter} />
       <div className="submit-row">
         <div>
-          <p>{canSubmit ? 'All requirements and marked-assessment copies are ready to submit.' : 'Resolve every checklist requirement and add all marked-assessment copies before submitting.'}</p>
-          {missingCopySlots.length > 0 && <ul className="missing-copy-list">{missingCopySlots.map(({ assessmentId, assessmentLabel, label }) => (
-            <li key={`${assessmentId}-${label}`}>{assessmentLabel}: {label} copy missing</li>
+          <p>{canSubmit ? 'All requirements and marked-assessment copies are ready to submit.' : 'Resolve the following before submitting:'}</p>
+          {missingRequirements.length > 0 && <ul className="missing-requirements-list">{missingRequirements.map((group) => (
+            <li key={group.id}>
+              <strong>{group.label}</strong>
+              <ul>{group.missing.map((missing) => <li key={missing}>{missing}</li>)}</ul>
+            </li>
           ))}</ul>}
           {submitError && <p className="connection-feedback error">{submitError}</p>}
         </div>

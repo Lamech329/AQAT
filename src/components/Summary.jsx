@@ -29,22 +29,28 @@ export function Summary({ header, items, itemState, footer, submittedAt, onPrint
           <div><dt>Year</dt><dd>{header.year}</dd></div>
         </dl>
         <table>
-          <thead><tr><th>#</th><th>Required document</th><th>Status</th><th>Attachment / comments</th></tr></thead>
+          <thead><tr><th>#</th><th>Required document</th><th>Status</th><th>Attachments by assessment</th><th>Comments</th></tr></thead>
           <tbody>
             {items.map((item) => {
               const state = itemState[item.id] ?? {}
               const attachments = item.marker === 'copies'
-                ? [
-                    state.attachment && `Legacy upload (unassigned): ${state.attachment.name}`,
-                    ...COPY_SLOTS.map(({ id, label }) => state.attachments?.[id] && `${label}: ${state.attachments[id].name}`),
-                  ].filter(Boolean)
+                ? (state.assessmentInstances ?? [{
+                    id: 'instance-1',
+                    label: `${item.label} 1`,
+                    attachments: state.attachments ?? {},
+                  }]).flatMap((instance) => COPY_SLOTS.flatMap(({ id, label }) => (
+                    instance.attachments?.[id]
+                      ? [`${instance.label} — ${label}: ${instance.attachments[id].name}`]
+                      : []
+                  )))
                 : [state.attachment?.name].filter(Boolean)
               return (
                 <tr key={item.id} className={item.order.length > 2 ? 'summary-sub-item' : ''}>
                   <td>{item.order}</td>
                   <td>{item.label} {item.marker && <em>({markerLabels[item.marker]})</em>}</td>
                   <td className={`summary-status status-${state.status || 'none'}`}>{statusLabels[state.status] ?? '—'}</td>
-                  <td>{[...attachments, state.comments].filter(Boolean).join(' — ') || '—'}</td>
+                  <td><ul className="summary-attachments">{attachments.length ? attachments.map((attachment) => <li key={attachment}>{attachment}</li>) : '—'}</ul></td>
+                  <td className="summary-comments">{state.comments || '—'}</td>
                 </tr>
               )
             })}

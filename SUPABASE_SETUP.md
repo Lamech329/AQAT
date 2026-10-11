@@ -45,10 +45,10 @@ updated_at     | timestamptz | Auto-set on creation
 **data.header contains:**
 - department, staffName, subjectName, subjectCode, semester, year
 
-**data.items contains:** (object mapping item ID → {status, comments, attachment, attachments})
+**data.items contains:** (object mapping item ID → {status, comments, attachment, assessmentInstances})
 - status: 'yes' | 'no' | 'na' | ''
 - `attachment`: legacy unlabelled attachment retained for existing records
-- `attachments`: for marked assessments, separate `lowest`, `median`, and `highest` attachments
+- `assessmentInstances`: for each marked assessment, a list of named instances; each instance has an `id`, editable `label`, and its own `lowest`, `median`, and `highest` attachments
 - comments: string
 
 **data.footer contains:**
@@ -62,6 +62,7 @@ id             | uuid        | Primary key
 checklist_id   | uuid        | Foreign key to checklists(id)
 path           | text        | Storage path in 'aqat-attachments' bucket
 item_id        | text        | Checklist item ID for this upload
+assessment_instance_id | text | Assessment instance ID for marked-copy uploads
 copy_slot      | text        | lowest, median, or highest for marked assessments
 name           | text        | Original filename
 content_type   | text        | MIME type
@@ -85,7 +86,7 @@ The only application roles are `staff` and `admin`. New profiles default to `sta
 - INSERT: Parent checklist owner = auth.uid() AND uploaded_by = auth.uid()
 - DELETE: owner can delete file metadata for their own drafts; Admin can delete any file metadata
 
-Storage policies separately authorize attachment access. Submission is rejected by a database trigger unless all three labelled copy slots exist for every marked assessment (`4`, `5`, `6`, `7`, and `9` in the current checklist catalog). Each slot must have a corresponding `files` metadata row and a Storage object. This supplements UI validation and does not rely on client-side checks.
+Storage policies separately authorize attachment access. Submission is rejected by a database trigger unless each non-N/A marked-assessment criterion (`4`, `5`, `6`, `7`, and `9` in the current checklist catalog) has at least one instance and all three labelled copy slots for every instance have a corresponding `files` metadata row and Storage object. N/A criteria are exempt. The latest migration backfills existing single sets as “Instance 1”; this supplements UI validation and does not rely on client-side checks.
 
 ## Setup Steps
 
@@ -98,7 +99,7 @@ Storage policies separately authorize attachment access. Submission is rejected 
 
 ### Step 2: Review and Apply the Migrations
 
-Review all pending migrations and their SQL before applying them to a linked project. The current role/copy-slot migration converts existing profiles, updates the profile constraint and Admin policies, adds file item/slot metadata, and installs the submit validation trigger.
+Review all pending migrations and their SQL before applying them to a linked project. The role/copy-slot migration `20261004033606_consolidate_staff_admin_roles_and_copy_slots.sql` converts existing profiles, updates the profile constraint and Admin policies, and adds file item/slot metadata. The new forward migration `20261009150000_add_assessment_instances_and_na_submission_validation.sql` adds instance metadata, safely backfills existing files/checklists, and updates submit validation. It does not change the operation-specific RLS policies or the owner-delete-draft restriction.
 
 ```bash
 supabase migration list --linked
@@ -213,7 +214,7 @@ After setup:
 3. Verify data persists after page refresh
 4. Test switching between `local` and `supabase` modes
 5. Verify Staff/Admin portal mismatch rejection
-6. Verify submission is blocked until each marked assessment has lowest-, median-, and highest-mark files
+6. Verify a criterion with multiple assessments requires lowest-, median-, and highest-mark files for every instance; N/A criteria need no files
 
 For production:
 - Configure email verification settings in Supabase Auth

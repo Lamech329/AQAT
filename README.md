@@ -67,6 +67,6 @@ Staff and Admin have separate dashboards and protected route namespaces:
 
 The Admin portal requires Supabase authentication. Local mode is staff-only because it has no trusted database role. Route guards redirect an authenticated user to their own portal, and a portal/account mismatch signs the user out.
 
-Each marked assessment requires separate **Lowest mark**, **Median mark**, and **Highest mark** uploads. The submit action and a database trigger both enforce these slots. Existing unlabelled uploads are retained but do not satisfy a labelled slot.
+Each marked-assessment criterion supports multiple named instances (for example, Test 1 and Test 2), each with **Lowest mark**, **Median mark**, and **Highest mark** uploads. Every non-N/A criterion requires at least one instance, and every existing instance must have all three copies; N/A criteria are exempt. The submit action and a database trigger enforce these rules. Existing single-set uploads are backfilled as the first instance.
 
-Apply reviewed migrations before using the current role and attachment schema. The current forward migration is `supabase/migrations/20261004033606_consolidate_staff_admin_roles_and_copy_slots.sql`.
+Apply reviewed migrations before using the current role and attachment schema. The latest forward migration is `supabase/migrations/20261009150000_add_assessment_instances_and_na_submission_validation.sql`.

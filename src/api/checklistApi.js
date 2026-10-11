@@ -5,7 +5,7 @@ const defaultApiBaseUrl = import.meta.env.VITE_DEFAULT_API_BASE_URL ?? ''
 import { flatChecklistItems } from '../data/checklistItems'
 // Adjust this path if your Supabase client scaffolding landed somewhere else.
 import { supabase } from '../utils/supabase/client'
-import { COPY_SLOTS, getMissingCopySlots } from '../utils/assessmentCopies'
+import { COPY_SLOTS, getMissingCopySlots, normalizeAssessmentItems } from '../utils/assessmentCopies'
 
 const FILES_BUCKET = 'aqat-attachments'
 const TEMPORARILY_DISABLED_MODES = new Set(['rest', 'database'])
@@ -30,7 +30,7 @@ export const emptyChecklist = () => ({
     semester: '',
     year: '',
   },
-  items: Object.fromEntries(flatChecklistItems.map((item) => [
+  items: normalizeAssessmentItems(Object.fromEntries(flatChecklistItems.map((item) => [
     item.id,
     {
       status: '',
@@ -38,7 +38,7 @@ export const emptyChecklist = () => ({
       attachments: item.marker === 'copies' ? Object.fromEntries(COPY_SLOTS.map(({ id }) => [id, null])) : {},
       comments: '',
     },
-  ])),
+  ]))),
   footer: {
     reviewerComments: '',
     additionalNotes: '',
@@ -86,7 +86,7 @@ const readRecords = () => {
     ...emptyChecklist(),
     ...legacyChecklist,
     header: { ...emptyChecklist().header, ...legacyChecklist.header },
-    items: { ...emptyChecklist().items, ...legacyChecklist.items },
+    items: normalizeAssessmentItems({ ...emptyChecklist().items, ...legacyChecklist.items }),
     footer: { ...emptyChecklist().footer, ...legacyChecklist.footer },
     id: createChecklistId(),
     status: legacyChecklist.submittedAt ? 'submitted' : 'draft',
@@ -102,7 +102,10 @@ const writeRecords = (records) => {
   return records
 }
 
-const localRecord = (id) => readRecords()[id] ?? null
+const localRecord = (id) => {
+  const record = readRecords()[id]
+  return record ? { ...record, items: normalizeAssessmentItems(record.items ?? {}) } : null
+}
 
 const updateLocalRecord = (id, changes) => {
   const records = readRecords()
@@ -194,7 +197,7 @@ const fetchChecklistRow = async (id) => {
 const rowToChecklist = (row) => ({
   id: row.id,
   header: row.data?.header ?? emptyChecklist().header,
-  items: row.data?.items ?? emptyChecklist().items,
+  items: normalizeAssessmentItems(row.data?.items ?? emptyChecklist().items),
   footer: row.data?.footer ?? emptyChecklist().footer,
   status: row.status === 'submitted' ? 'submitted' : row.data?.reopenedAt ? 'reopened' : row.status,
   submittedAt: row.submitted_at,
@@ -242,7 +245,7 @@ export const listChecklists = async () => {
       submittedAt: row.submitted_at,
       updatedAt: row.updated_at,
       reopenedAt: row.data?.reopenedAt,
-      items: row.data?.items ?? {},
+      items: normalizeAssessmentItems(row.data?.items ?? {}),
     }))
   }
 
@@ -261,7 +264,7 @@ export const listChecklists = async () => {
       submittedAt,
       updatedAt: updatedAt ?? submittedAt,
       reopenedAt,
-      items,
+      items: normalizeAssessmentItems(items),
     }))
     .sort((first, second) => (second.submittedAt ?? '').localeCompare(first.submittedAt ?? ''))
 }
@@ -286,7 +289,7 @@ export const createChecklist = async (checklist) => {
     ...emptyChecklist(),
     ...checklist,
     header: { ...emptyChecklist().header, ...checklist.header },
-    items: { ...emptyChecklist().items, ...checklist.items },
+    items: normalizeAssessmentItems({ ...emptyChecklist().items, ...checklist.items }),
     footer: { ...emptyChecklist().footer, ...checklist.footer },
     status: 'draft',
     updatedAt: new Date().toISOString(),
@@ -366,7 +369,7 @@ export const saveItem = async (id, itemId, item) => {
   })
 }
 
-export const uploadFile = async (id, file, itemId, copySlot = null) => {
+export const uploadFile = async (id, file, itemId, assessmentInstanceId = null, copySlot = null) => {
   const config = getApiConfig()
 
   if (isSupabaseMode(config)) {
@@ -385,6 +388,7 @@ export const uploadFile = async (id, file, itemId, copySlot = null) => {
         size: file.size,
         uploaded_by: user.id,
         item_id: itemId,
+        assessment_instance_id: assessmentInstanceId,
         copy_slot: copySlot,
       })
       .select()
@@ -397,6 +401,8 @@ export const uploadFile = async (id, file, itemId, copySlot = null) => {
       size: data.size,
       path: data.path,
       uploadedAt: data.uploaded_at,
+      assessmentInstanceId: data.assessment_instance_id,
+      copySlot: data.copy_slot,
     }
   }
 
@@ -443,7 +449,11 @@ export const submitChecklist = async (id) => {
     const missingCopies = getMissingCopySlots(row.data?.items ?? {})
     if (missingCopies.length) {
       const missingText = missingCopies
-        .map(({ assessmentLabel, label }) => `${assessmentLabel}: ${label}`)
+        .map(({ assessmentLabel, assessmentInstanceLabel, label }) => (
+          assessmentInstanceLabel
+            ? `${assessmentLabel}: ${assessmentInstanceLabel}: ${label}`
+            : `${assessmentLabel}: ${label}`
+        ))
         .join('; ')
       throw new Error(`Cannot submit. Missing marked-assessment copies: ${missingText}.`)
     }
@@ -464,7 +474,11 @@ export const submitChecklist = async (id) => {
   const missingCopies = getMissingCopySlots(record?.items ?? {})
   if (missingCopies.length) {
     const missingText = missingCopies
-      .map(({ assessmentLabel, label }) => `${assessmentLabel}: ${label}`)
+      .map(({ assessmentLabel, assessmentInstanceLabel, label }) => (
+        assessmentInstanceLabel
+          ? `${assessmentLabel}: ${assessmentInstanceLabel}: ${label}`
+          : `${assessmentLabel}: ${label}`
+      ))
       .join('; ')
     throw new Error(`Cannot submit. Missing marked-assessment copies: ${missingText}.`)
   }
