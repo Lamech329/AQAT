@@ -11,6 +11,7 @@ const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (character
 }[character]))
 
 function attachmentLines(item, state) {
+  if (state.status === 'na') return []
   if (item.marker === 'copies') {
     return (state.assessmentInstances ?? []).flatMap((instance) => (
       COPY_SLOTS.flatMap((slot) => {
@@ -21,7 +22,8 @@ function attachmentLines(item, state) {
       })
     ))
   }
-  return state.attachment?.name ? [`<li>${escapeHtml(state.attachment.name)}</li>`] : []
+  const attachments = Array.isArray(state.attachments) ? state.attachments : state.attachment ? [state.attachment] : []
+  return attachments.filter(Boolean).map((attachment) => `<li>${escapeHtml(attachment.name)}</li>`)
 }
 
 export function buildChecklistPrintHtml(record) {

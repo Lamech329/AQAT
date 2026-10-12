@@ -33,7 +33,7 @@ export function Summary({ header, items, itemState, footer, submittedAt, onPrint
           <tbody>
             {items.map((item) => {
               const state = itemState[item.id] ?? {}
-              const attachments = item.marker === 'copies'
+              const attachments = state.status === 'na' ? [] : item.marker === 'copies'
                 ? (state.assessmentInstances ?? [{
                     id: 'instance-1',
                     label: `${item.label} 1`,
@@ -43,7 +43,7 @@ export function Summary({ header, items, itemState, footer, submittedAt, onPrint
                       ? [`${instance.label} — ${label}: ${instance.attachments[id].name}`]
                       : []
                   )))
-                : [state.attachment?.name].filter(Boolean)
+                : (Array.isArray(state.attachments) ? state.attachments : state.attachment ? [state.attachment] : []).map((file) => file?.name).filter(Boolean)
               return (
                 <tr key={item.id} className={item.order.length > 2 ? 'summary-sub-item' : ''}>
                   <td>{item.order}</td>

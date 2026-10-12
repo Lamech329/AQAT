@@ -61,23 +61,29 @@ insert into public.files (
   checklist_id, path, name, content_type, size, uploaded_by, item_id, assessment_instance_id, copy_slot
 )
 values
+  ('a2200000-0000-4000-8000-000000000101', 'a2200000-0000-4000-8000-000000000101/test-1-question-paper.pdf', 'test-1-question-paper.pdf', 'application/pdf', 1, 'a2200000-0000-0000-0000-000000000001', '7', 'test-1', 'question_paper'),
   ('a2200000-0000-4000-8000-000000000101', 'a2200000-0000-4000-8000-000000000101/test-1-low.pdf', 'test-1-low.pdf', 'application/pdf', 1, 'a2200000-0000-0000-0000-000000000001', '7', 'test-1', 'lowest'),
   ('a2200000-0000-4000-8000-000000000101', 'a2200000-0000-4000-8000-000000000101/test-1-mid.pdf', 'test-1-mid.pdf', 'application/pdf', 1, 'a2200000-0000-0000-0000-000000000001', '7', 'test-1', 'median'),
   ('a2200000-0000-4000-8000-000000000101', 'a2200000-0000-4000-8000-000000000101/test-1-high.pdf', 'test-1-high.pdf', 'application/pdf', 1, 'a2200000-0000-0000-0000-000000000001', '7', 'test-1', 'highest'),
+  ('a2200000-0000-4000-8000-000000000101', 'a2200000-0000-4000-8000-000000000101/test-2-question-paper.pdf', 'test-2-question-paper.pdf', 'application/pdf', 1, 'a2200000-0000-0000-0000-000000000001', '7', 'test-2', 'question_paper'),
   ('a2200000-0000-4000-8000-000000000101', 'a2200000-0000-4000-8000-000000000101/test-2-low.pdf', 'test-2-low.pdf', 'application/pdf', 1, 'a2200000-0000-0000-0000-000000000001', '7', 'test-2', 'lowest'),
   ('a2200000-0000-4000-8000-000000000101', 'a2200000-0000-4000-8000-000000000101/test-2-mid.pdf', 'test-2-mid.pdf', 'application/pdf', 1, 'a2200000-0000-0000-0000-000000000001', '7', 'test-2', 'median'),
   ('a2200000-0000-4000-8000-000000000101', 'a2200000-0000-4000-8000-000000000101/test-2-high.pdf', 'test-2-high.pdf', 'application/pdf', 1, 'a2200000-0000-0000-0000-000000000001', '7', 'test-2', 'highest'),
+  ('a2200000-0000-4000-8000-000000000102', 'a2200000-0000-4000-8000-000000000102/question-paper.pdf', 'question-paper.pdf', 'application/pdf', 1, 'a2200000-0000-0000-0000-000000000001', '7', 'test-1', 'question_paper'),
   ('a2200000-0000-4000-8000-000000000102', 'a2200000-0000-4000-8000-000000000102/low.pdf', 'low.pdf', 'application/pdf', 1, 'a2200000-0000-0000-0000-000000000001', '7', 'test-1', 'lowest'),
   ('a2200000-0000-4000-8000-000000000102', 'a2200000-0000-4000-8000-000000000102/high.pdf', 'high.pdf', 'application/pdf', 1, 'a2200000-0000-0000-0000-000000000001', '7', 'test-1', 'highest');
 
 insert into storage.objects (bucket_id, name, owner)
 values
+  ('aqat-attachments', 'a2200000-0000-4000-8000-000000000101/test-1-question-paper.pdf', 'a2200000-0000-0000-0000-000000000001'),
   ('aqat-attachments', 'a2200000-0000-4000-8000-000000000101/test-1-low.pdf', 'a2200000-0000-0000-0000-000000000001'),
   ('aqat-attachments', 'a2200000-0000-4000-8000-000000000101/test-1-mid.pdf', 'a2200000-0000-0000-0000-000000000001'),
   ('aqat-attachments', 'a2200000-0000-4000-8000-000000000101/test-1-high.pdf', 'a2200000-0000-0000-0000-000000000001'),
+  ('aqat-attachments', 'a2200000-0000-4000-8000-000000000101/test-2-question-paper.pdf', 'a2200000-0000-0000-0000-000000000001'),
   ('aqat-attachments', 'a2200000-0000-4000-8000-000000000101/test-2-low.pdf', 'a2200000-0000-0000-0000-000000000001'),
   ('aqat-attachments', 'a2200000-0000-4000-8000-000000000101/test-2-mid.pdf', 'a2200000-0000-0000-0000-000000000001'),
   ('aqat-attachments', 'a2200000-0000-4000-8000-000000000101/test-2-high.pdf', 'a2200000-0000-0000-0000-000000000001'),
+  ('aqat-attachments', 'a2200000-0000-4000-8000-000000000102/question-paper.pdf', 'a2200000-0000-0000-0000-000000000001'),
   ('aqat-attachments', 'a2200000-0000-4000-8000-000000000102/low.pdf', 'a2200000-0000-0000-0000-000000000001'),
   ('aqat-attachments', 'a2200000-0000-4000-8000-000000000102/high.pdf', 'a2200000-0000-0000-0000-000000000001');
 
@@ -114,7 +120,7 @@ select throws_ok(
 
 select lives_ok(
   $$update public.checklists set status = 'submitted' where id = 'a2200000-0000-4000-8000-000000000101'$$,
-  'submission succeeds when two tests each have three copies'
+  'submission succeeds when two tests each have four required files'
 );
 
 select lives_ok(

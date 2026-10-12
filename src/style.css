@@ -628,6 +628,68 @@ input[type="search"], select, textarea {
   .admin-toolbar input[type="search"], .admin-toolbar .secondary-button { grid-column: auto; }
 }
 
+.checklist-item { display: block; }
+.item-header-row { display: grid; grid-template-columns: minmax(240px, .9fr) minmax(0, 1.1fr); gap: 22px; align-items: start; }
+.item-controls-row { display: grid; grid-template-columns: minmax(190px, auto) minmax(180px, 1fr); gap: 12px; align-items: end; }
+.assessment-instance-panel, .regular-attachment-panel { margin-top: 14px; }
+.assessment-instance-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.assessment-instance { min-width: 0; }
+.assessment-instance .copy-slot-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.copy-slot-header { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 8px; }
+.copy-slot-name { min-width: 0; overflow: hidden; font-size: .78rem; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
+.status-dot { width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; background: var(--error-text); }
+.status-dot.filled { background: var(--success-text); }
+.copy-progress-row { display: flex; align-items: center; gap: 7px; }
+.copy-progress-pill { padding: 3px 8px; border-radius: 999px; background: var(--accent-surface); color: var(--accent); font-size: .72rem; font-weight: 800; }
+.copy-complete-tag { color: var(--success-text); font-weight: 900; }
+.instance-complete { border-color: color-mix(in srgb, var(--success-text) 45%, var(--border)); }
+.instance-summary-toggle { display: flex; width: 100%; min-width: 0; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 2px; border: 0; background: transparent; color: var(--text); cursor: pointer; font: inherit; font-size: .82rem; font-weight: 750; text-align: left; }
+.instance-summary-toggle > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.instance-summary-status { flex: 0 0 auto; color: var(--success-text); }
+.instance-collapse-button { padding: 5px 8px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--surface); color: var(--text-muted); cursor: pointer; font-size: .68rem; font-weight: 700; white-space: nowrap; }
+.add-assessment-button { border-style: dashed; }
+.copy-slot .attachment-control { display: flex; min-height: 56px; align-items: center; justify-content: center; gap: 8px; border: 1px dashed var(--border-strong); border-radius: 7px; background: var(--surface-muted); cursor: pointer; }
+.copy-slot .attachment-control:focus-within, .dropzone-picker:focus-within { outline: 3px solid var(--focus); outline-offset: 2px; }
+.slot-dropzone-label { color: var(--accent); font-size: .74rem; font-weight: 750; white-space: nowrap; }
+.attachment-dropzone { min-width: 0; border: 1px dashed var(--border-strong); border-radius: 9px; background: var(--surface-muted); transition: border-color .15s, background-color .15s; }
+.attachment-dropzone.dragging { border-color: var(--accent); background: var(--accent-surface); }
+.dropzone-picker { display: grid; min-height: 76px; place-items: center; padding: 12px; cursor: pointer; text-align: center; }
+.dropzone-label { color: var(--accent); font-size: .82rem; font-weight: 750; }
+.file-chip-list { display: grid; gap: 7px; min-width: 0; }
+.file-chip-total { color: var(--text-muted); font-size: .75rem; font-weight: 750; }
+.file-chip { display: flex; min-width: 0; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+.file-chip-icon { flex: 0 0 auto; color: var(--accent); }
+.file-chip-name { flex: 1; min-width: 0; overflow: hidden; font-size: .76rem; text-overflow: ellipsis; white-space: nowrap; }
+.file-chip-size { flex: 0 0 auto; margin-left: 4px; color: var(--text-muted); font-size: .7rem; white-space: nowrap; }
+.file-chip-remove { display: grid; width: 30px; height: 30px; flex: 0 0 auto; place-items: center; border: 0; border-radius: 50%; background: transparent; color: var(--error-text); cursor: pointer; font-size: 1.2rem; }
+.file-chip-remove:hover:not(:disabled) { background: var(--error-bg); }
+.file-chip-remove:disabled { cursor: not-allowed; opacity: .6; }
+.file-chip-uploading { border-style: dashed; color: var(--text-muted); }
+.upload-spinner { width: 16px; height: 16px; flex: 0 0 auto; border: 2px solid var(--border-strong); border-top-color: var(--accent); border-radius: 50%; animation: file-spin .7s linear infinite; }
+@keyframes file-spin { to { transform: rotate(360deg); } }
+.na-lock-row { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-muted); }
+.na-status-badge { padding: 3px 8px; border-radius: 999px; background: var(--available-bg); color: var(--available-text); font-size: .72rem; font-weight: 800; }
+.na-note { color: var(--text-muted); font-size: .8rem; }
+.na-locked-panel .assessment-instance-grid, .na-locked-panel .add-assessment-button { opacity: .5; }
+.link-button { padding: 3px 4px; border: 0; background: transparent; color: var(--accent); cursor: pointer; font: inherit; font-size: .78rem; font-weight: 750; text-decoration: underline; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; clip-path: inset(50%); }
+
+@media (max-width: 850px) {
+  .item-header-row { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .item-controls-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+}
+
+@media (max-width: 760px) {
+  .assessment-instance-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 520px) {
+  .item-controls-row { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .status-controls { width: fit-content; max-width: 100%; }
+  .assessment-instance .copy-slot-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dropzone-picker { min-height: 64px; }
+}
+
 @media print {
   :root {
     --bg: #ffffff;

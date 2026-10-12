@@ -17,7 +17,7 @@ import {
   uploadFile,
 } from './api/checklistApi'
 import { flatChecklistItems } from './data/checklistItems'
-import { createAssessmentInstance, getMissingChecklistRequirements } from './utils/assessmentCopies'
+import { clearCriterionFiles, createAssessmentInstance, getCriterionFiles, getMissingChecklistRequirements } from './utils/assessmentCopies'
 import { printChecklistSummary } from './utils/checklistPrint'
 import { HeaderForm } from './components/HeaderForm'
 import { Checklist } from './components/Checklist'
@@ -129,27 +129,24 @@ function ChecklistWorkspace() {
     const current = checklistRef.current
     const currentItem = current.items[itemId] ?? {}
     if (status === 'na') {
-      const attachments = [
-        currentItem.attachment,
-        ...Object.values(currentItem.assessmentInstances ?? []).flatMap((instance) => Object.values(instance.attachments ?? {})),
-      ].filter(Boolean)
+      const attachments = getCriterionFiles(currentItem)
       if (attachments.length) {
-        const removeFiles = window.confirm('Set this criterion to N/A? Choose OK to remove its attached files; Cancel keeps them.')
-        if (removeFiles) {
-          try {
-            for (const attachment of attachments) {
-              if (attachment.path) await removeAttachment(current.id, attachment.path)
-            }
-            const assessmentInstances = (currentItem.assessmentInstances ?? []).map((instance) => ({
-              ...instance,
-              attachments: Object.fromEntries(Object.keys(instance.attachments ?? {}).map((slot) => [slot, null])),
-            }))
-            updateItem(itemId, { status, attachment: null, assessmentInstances })
-            return
-          } catch (error) {
-            alert(`Failed to remove attached files: ${error.message}`)
-            return
+        const removeFiles = window.confirm(`Switching to N/A will remove ${attachments.length} uploaded file${attachments.length > 1 ? 's' : ''}. Continue?`)
+        if (!removeFiles) {
+          return
+        }
+        try {
+          for (const attachment of attachments) {
+            if (attachment.path) await removeAttachment(current.id, attachment.path)
           }
+          updateItem(itemId, {
+            status,
+            ...clearCriterionFiles(currentItem),
+          })
+          return
+        } catch (error) {
+          alert(`Failed to remove attached files: ${error.message}`)
+          return
         }
       }
     }
@@ -190,58 +187,69 @@ function ChecklistWorkspace() {
     }
   }
 
-  const handleFileChange = async (itemId, file, assessmentInstanceId = null, assessmentInstanceLabel = null, copySlot = null) => {
-    if (!file) return
+  const handleFileChange = async (itemId, fileOrFiles, assessmentInstanceId = null, assessmentInstanceLabel = null, copySlot = null) => {
+    const files = Array.isArray(fileOrFiles) ? fileOrFiles : fileOrFiles ? [fileOrFiles] : []
+    if (!files.length) return
     try {
       const current = checklistRef.current
       const currentItem = current.items[itemId] ?? {}
-      const currentInstance = currentItem.assessmentInstances?.find((instance) => instance.id === assessmentInstanceId)
-      const previousAttachment = copySlot
-        ? currentInstance?.attachments?.[copySlot]
-        : currentItem.attachment
-      if (previousAttachment?.path) {
-        await removeAttachment(current.id, previousAttachment.path)
-        const latest = checklistRef.current
-        const latestItem = latest.items[itemId] ?? {}
-        const clearedItem = copySlot
-          ? {
-              ...latestItem,
-              assessmentInstances: (latestItem.assessmentInstances ?? []).map((instance) => (
-                instance.id === assessmentInstanceId
-                  ? { ...instance, attachments: { ...instance.attachments, [copySlot]: null } }
-                  : instance
-              )),
-            }
-          : { ...latestItem, attachment: null }
-        const clearedChecklist = {
-          ...latest,
-          items: { ...latest.items, [itemId]: clearedItem },
-        }
-        setChecklistRecord(clearedChecklist)
-        await saveItem(clearedChecklist.id, itemId, clearedItem)
-      }
-      const uploaded = await uploadFile(current.id, file, itemId, assessmentInstanceId, copySlot)
-      const latestChecklist = checklistRef.current
-      const latestItem = latestChecklist.items[itemId] ?? {}
-      const latestInstance = latestItem.assessmentInstances?.find((instance) => instance.id === assessmentInstanceId)
-      if (assessmentInstanceId && !latestInstance) {
-        if (uploaded.path) await removeAttachment(latestChecklist.id, uploaded.path)
-        throw new Error('The assessment instance was removed before its upload finished.')
-      }
-      const attachment = assessmentInstanceId
-        ? { ...uploaded, assessmentInstanceId, assessmentInstanceLabel: latestInstance.label, copySlot }
-        : uploaded
-      const changes = copySlot
-        ? {
+
+      if (copySlot) {
+        const currentInstance = currentItem.assessmentInstances?.find((instance) => instance.id === assessmentInstanceId)
+        const previousAttachment = currentInstance?.attachments?.[copySlot]
+        if (previousAttachment?.path) {
+          await removeAttachment(current.id, previousAttachment.path)
+          const latest = checklistRef.current
+          const latestItem = latest.items[itemId] ?? {}
+          const clearedItem = {
+            ...latestItem,
             assessmentInstances: (latestItem.assessmentInstances ?? []).map((instance) => (
               instance.id === assessmentInstanceId
-                ? { ...instance, attachments: { ...instance.attachments, [copySlot]: attachment } }
+                ? { ...instance, attachments: { ...instance.attachments, [copySlot]: null } }
                 : instance
             )),
           }
-        : { attachment }
-      const item = { ...latestItem, ...changes }
-      const updatedChecklist = { ...latestChecklist, items: { ...latestChecklist.items, [itemId]: item } }
+          const clearedChecklist = {
+            ...latest,
+            items: { ...latest.items, [itemId]: clearedItem },
+          }
+          setChecklistRecord(clearedChecklist)
+          await saveItem(clearedChecklist.id, itemId, clearedItem)
+        }
+        const uploaded = await uploadFile(current.id, files[0], itemId, assessmentInstanceId, copySlot)
+        const latestChecklist = checklistRef.current
+        const latestItem = latestChecklist.items[itemId] ?? {}
+        const latestInstance = latestItem.assessmentInstances?.find((instance) => instance.id === assessmentInstanceId)
+        if (!latestInstance) {
+          if (uploaded.path) await removeAttachment(latestChecklist.id, uploaded.path)
+          throw new Error('The assessment instance was removed before its upload finished.')
+        }
+        const attachment = { ...uploaded, assessmentInstanceId, assessmentInstanceLabel: latestInstance.label, copySlot }
+        const item = {
+          ...latestItem,
+          assessmentInstances: (latestItem.assessmentInstances ?? []).map((instance) => (
+            instance.id === assessmentInstanceId
+              ? { ...instance, attachments: { ...instance.attachments, [copySlot]: attachment } }
+              : instance
+          )),
+        }
+        const updatedChecklist = { ...latestChecklist, items: { ...latestChecklist.items, [itemId]: item } }
+        setChecklistRecord(updatedChecklist)
+        await saveItem(updatedChecklist.id, itemId, item)
+        return
+      }
+
+      const existingAttachments = Array.isArray(currentItem.attachments) ? currentItem.attachments.filter(Boolean) : currentItem.attachment ? [currentItem.attachment] : []
+      const uploadedFiles = []
+      for (const file of files) {
+        uploadedFiles.push(await uploadFile(current.id, file, itemId))
+      }
+      const item = {
+        ...currentItem,
+        attachments: [...existingAttachments, ...uploadedFiles],
+        attachment: uploadedFiles[0] ?? null,
+      }
+      const updatedChecklist = { ...current, items: { ...current.items, [itemId]: item } }
       setChecklistRecord(updatedChecklist)
       await saveItem(updatedChecklist.id, itemId, item)
     } catch (error) {
@@ -257,16 +265,26 @@ function ChecklistWorkspace() {
       }
       const current = checklistRef.current
       const currentItem = current.items[itemId] ?? {}
-      const changes = copySlot
-        ? {
-            assessmentInstances: (currentItem.assessmentInstances ?? []).map((instance) => (
-              instance.id === assessmentInstanceId
-                ? { ...instance, attachments: { ...instance.attachments, [copySlot]: null } }
-                : instance
-            )),
-          }
-        : { attachment: null }
-      const item = { ...currentItem, ...changes }
+
+      if (copySlot) {
+        const item = {
+          ...currentItem,
+          assessmentInstances: (currentItem.assessmentInstances ?? []).map((instance) => (
+            instance.id === assessmentInstanceId
+              ? { ...instance, attachments: { ...instance.attachments, [copySlot]: null } }
+              : instance
+          )),
+        }
+        const updatedChecklist = { ...current, items: { ...current.items, [itemId]: item } }
+        setChecklistRecord(updatedChecklist)
+        await saveItem(updatedChecklist.id, itemId, item)
+        return
+      }
+
+      const attachments = Array.isArray(currentItem.attachments)
+        ? currentItem.attachments.filter((file) => attachment.path ? file?.path !== attachment.path : file !== attachment)
+        : []
+      const item = { ...currentItem, attachments, attachment: attachments[0] ?? null }
       const updatedChecklist = { ...current, items: { ...current.items, [itemId]: item } }
       setChecklistRecord(updatedChecklist)
       await saveItem(updatedChecklist.id, itemId, item)

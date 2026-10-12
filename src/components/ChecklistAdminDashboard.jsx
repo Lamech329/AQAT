@@ -25,8 +25,13 @@ function isStale(record, staleDays) {
 
 function recordFiles(record) {
   return Object.entries(record.items ?? {}).flatMap(([itemId, item]) => {
+    if (item.status === 'na') return []
     const itemLabel = flatChecklistItems.find((checklistItem) => checklistItem.id === itemId)?.label ?? itemId
-    const legacy = item.attachment ? [{ ...item.attachment, itemId, itemLabel: `${itemLabel} (unassigned legacy upload)` }] : []
+    const regular = (Array.isArray(item.attachments) ? item.attachments : item.attachment ? [item.attachment] : []).map((attachment) => ({
+      ...attachment,
+      itemId,
+      itemLabel: `${itemLabel} (regular file)`,
+    }))
     const copies = (item.assessmentInstances ?? []).flatMap((instance) => COPY_SLOTS.flatMap((slot) => instance.attachments?.[slot.id] ? [{
       ...instance.attachments[slot.id],
       itemId,
@@ -35,7 +40,7 @@ function recordFiles(record) {
       copySlot: slot.id,
       itemLabel: `${itemLabel} — ${instance.label} — ${slot.label}`,
     }] : []))
-    return [...legacy, ...copies]
+    return [...regular, ...copies]
   })
 }
 
@@ -120,18 +125,26 @@ export function ChecklistAdminDashboard() {
         const { data, error: fileError } = await supabase.from('files').select('*').eq('checklist_id', record.id)
         if (fileError) throw fileError
         setFiles(data.map((file) => {
-          const legacyItemId = Object.entries(record.items ?? {}).find(([, item]) => item.attachment?.path === file.path)?.[0]
+          const legacyItemId = Object.entries(record.items ?? {}).find(([, item]) => (
+            (Array.isArray(item.attachments) ? item.attachments : item.attachment ? [item.attachment] : [])
+              .some((attachment) => attachment?.path === file.path)
+            || (item.assessmentInstances ?? []).some((instance) => (
+              Object.values(instance.attachments ?? {}).some((attachment) => attachment?.path === file.path)
+            ))
+          ))?.[0]
           const itemId = file.item_id ?? legacyItemId
           const itemLabel = flatChecklistItems.find((item) => item.id === itemId)?.label ?? file.name
-          const legacyCopySlot = itemId && Object.entries(record.items?.[itemId]?.attachments ?? {}).find(([, attachment]) => attachment?.path === file.path)?.[0]
+          const legacyCopySlot = itemId && (record.items?.[itemId]?.assessmentInstances ?? [])
+            .flatMap((instance) => Object.entries(instance.attachments ?? {}))
+            .find(([, attachment]) => attachment?.path === file.path)?.[0]
           const copySlot = file.copy_slot ?? legacyCopySlot
           const copySlotLabel = COPY_SLOTS.find((slot) => slot.id === copySlot)?.label
           const instanceLabel = record.items?.[itemId]?.assessmentInstances?.find(
             (instance) => instance.id === file.assessment_instance_id,
           )?.label
           const assessmentLabel = [instanceLabel, copySlotLabel].filter(Boolean).join(' — ')
-          return { ...file, itemLabel: assessmentLabel ? `${itemLabel} — ${assessmentLabel}` : itemLabel }
-        }))
+          return { ...file, itemId, itemLabel: assessmentLabel ? `${itemLabel} — ${assessmentLabel}` : itemLabel }
+        }).filter((file) => record.items?.[file.itemId]?.status !== 'na'))
         const { data: activity, error: activityError } = await supabase
           .from('activity_logs')
           .select('actor_email, created_at')

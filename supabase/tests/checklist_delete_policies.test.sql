@@ -91,7 +91,7 @@ select
   'instance-1',
   slots.copy_slot
 from unnest(array['4', '5', '6', '7', '9']) as assessment(item_id)
-cross join unnest(array['lowest', 'median', 'highest']) as slots(copy_slot);
+cross join unnest(array['question_paper', 'lowest', 'median', 'highest']) as slots(copy_slot);
 
 insert into storage.objects (bucket_id, name, owner)
 select
@@ -99,7 +99,7 @@ select
   'a1100000-0000-4000-8000-000000000103/' || assessment.item_id || '-' || slots.copy_slot || '.pdf',
   'a1100000-0000-0000-0000-000000000001'
 from unnest(array['4', '5', '6', '7', '9']) as assessment(item_id)
-cross join unnest(array['lowest', 'median', 'highest']) as slots(copy_slot);
+cross join unnest(array['question_paper', 'lowest', 'median', 'highest']) as slots(copy_slot);
 
 update public.checklists
 set status = 'submitted'
@@ -175,7 +175,7 @@ with deleted as (
 )
 select is(
   (select count(*) from deleted),
-  15::bigint,
+  20::bigint,
   'an admin can delete all file metadata from any checklist'
 );
 

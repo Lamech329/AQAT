@@ -1,6 +1,7 @@
 import { flatChecklistItems } from '../data/checklistItems.js'
 
 export const COPY_SLOTS = [
+  { id: 'question_paper', label: 'Question paper' },
   { id: 'lowest', label: 'Lowest mark' },
   { id: 'median', label: 'Median mark' },
   { id: 'highest', label: 'Highest mark' },
@@ -27,12 +28,68 @@ export function createAssessmentInstance(assessmentId, number) {
   }
 }
 
+export function normalizeLegacyAttachmentList(value = []) {
+  if (Array.isArray(value)) return value.filter(Boolean)
+  if (!value) return []
+  return [value]
+}
+
+export function normalizeRegularItem(item = {}) {
+  if (!item || typeof item !== 'object') return item
+  if (Array.isArray(item.assessmentInstances) || item.marker === 'copies') return item
+
+  const attachments = normalizeLegacyAttachmentList(Array.isArray(item.attachments) ? item.attachments : item.attachment)
+  return {
+    ...item,
+    attachments,
+    attachment: attachments[0] ?? null,
+  }
+}
+
+export function normalizeChecklistState(items = {}) {
+  return Object.fromEntries(Object.entries(items ?? {}).map(([id, item]) => [id, normalizeRegularItem(item)]))
+}
+
+export function getRegularAttachmentList(item = {}) {
+  if (!item || typeof item !== 'object') return []
+  if (Array.isArray(item.attachments)) return item.attachments.filter(Boolean)
+  if (item.attachment) return [item.attachment]
+  return []
+}
+
+export function getCriterionFiles(item = {}) {
+  const regular = getRegularAttachmentList(item)
+  const marked = (item.assessmentInstances ?? []).flatMap((instance) => Object.values(instance.attachments ?? {}).filter(Boolean))
+  return [...regular, ...marked]
+}
+
+export function clearCriterionFiles(item = {}) {
+  return {
+    ...item,
+    attachment: null,
+    attachments: [],
+    assessmentInstances: (item.assessmentInstances ?? []).map((instance) => ({
+      ...instance,
+      attachments: Object.fromEntries(COPY_SLOTS.map(({ id }) => [id, null])),
+    })),
+  }
+}
+
 export function normalizeAssessmentItems(items = {}) {
   const normalized = { ...items }
 
   MARKED_ASSESSMENTS.forEach((assessment) => {
     const item = normalized[assessment.id] ?? {}
-    if (Array.isArray(item.assessmentInstances)) return
+    if (Array.isArray(item.assessmentInstances)) {
+      normalized[assessment.id] = {
+        ...item,
+        assessmentInstances: item.assessmentInstances.map((instance) => ({
+          ...instance,
+          attachments: Object.fromEntries(COPY_SLOTS.map(({ id }) => [id, instance.attachments?.[id] ?? null])),
+        })),
+      }
+      return
+    }
 
     const attachments = item.attachments ?? {}
     normalized[assessment.id] = {
@@ -45,7 +102,7 @@ export function normalizeAssessmentItems(items = {}) {
     }
   })
 
-  return normalized
+  return normalizeChecklistState(normalized)
 }
 
 export function getMissingCopySlots(itemState = {}) {
@@ -105,7 +162,7 @@ export function getMissingChecklistRequirements(itemState = {}, header = {}) {
         .filter(({ assessmentId }) => assessmentId === item.id)
         .forEach((copy) => {
           missing.push(copy.assessmentInstanceId
-            ? `${copy.assessmentInstanceLabel}: ${copy.label.replace(/ mark$/, '').toLowerCase()} copy missing`
+          ? `${copy.assessmentInstanceLabel}: ${copy.slotId === 'question_paper' ? 'question paper missing' : `${copy.label.replace(/ mark$/, '').toLowerCase()} copy missing`}`
             : copy.label)
         })
     }

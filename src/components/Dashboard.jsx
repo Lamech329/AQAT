@@ -14,7 +14,7 @@ export function Dashboard({ checklists, onNew, onOpen, onView, onEdit, theme, on
         <div>
           <p className="eyebrow">Academic Quality Assurance Team</p>
           <h1>Staff checklist dashboard</h1>
-          <p>Track drafts, submissions, and the three required marked copies.</p>
+          <p>Track drafts, submissions, and the four required files for each marked assessment.</p>
         </div>
         <div className="header-actions">
           <DashboardTabs />
@@ -45,7 +45,7 @@ export function Dashboard({ checklists, onNew, onOpen, onView, onEdit, theme, on
           <div className="dashboard-table-wrap">
             <table className="dashboard-table">
               <thead>
-                <tr><th>Subject Name</th><th>Subject Code</th><th>Department</th><th>Status</th><th>Marked-copy progress</th><th>Submitted</th><th className="actions-column">Action</th></tr>
+                <tr><th>Subject Name</th><th>Subject Code</th><th>Department</th><th>Status</th><th>Assessment-file progress</th><th>Submitted</th><th className="actions-column">Action</th></tr>
               </thead>
               <tbody>
                 {checklists.map((checklist) => {
@@ -77,7 +77,7 @@ export function Dashboard({ checklists, onNew, onOpen, onView, onEdit, theme, on
                           return <span key={assessment.id} title={`${assessment.label}: ${state.status === 'na' ? 'N/A' : `${progress}/${required}`}`} className={progress === required ? 'copy-progress-complete' : ''}>{assessment.order} {state.status === 'na' ? 'N/A' : `${progress}/${required}`}</span>
                         })}
                       </div>
-                      {missing.length > 0 && <details className="dashboard-missing"><summary>{missing.length} missing copy slot(s)</summary><ul>{missing.map(({ assessmentId, assessmentLabel, assessmentInstanceLabel, label }) => <li key={`${assessmentId}-${assessmentInstanceLabel}-${label}`}>{assessmentLabel}: {assessmentInstanceLabel ? `${assessmentInstanceLabel}: ` : ''}{label}</li>)}</ul></details>}
+                      {missing.length > 0 && <details className="dashboard-missing"><summary>{missing.length} missing assessment file(s)</summary><ul>{missing.map(({ assessmentId, assessmentLabel, assessmentInstanceLabel, label }) => <li key={`${assessmentId}-${assessmentInstanceLabel}-${label}`}>{assessmentLabel}: {assessmentInstanceLabel ? `${assessmentInstanceLabel}: ` : ''}{label}</li>)}</ul></details>}
                     </td>
                     <td>{checklist.submittedAt ? new Date(checklist.submittedAt).toLocaleDateString() : '—'}</td>
                     <td className="dashboard-actions">

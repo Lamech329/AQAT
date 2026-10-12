@@ -5,7 +5,7 @@ const defaultApiBaseUrl = import.meta.env.VITE_DEFAULT_API_BASE_URL ?? ''
 import { flatChecklistItems } from '../data/checklistItems'
 // Adjust this path if your Supabase client scaffolding landed somewhere else.
 import { supabase } from '../utils/supabase/client'
-import { COPY_SLOTS, getMissingCopySlots, normalizeAssessmentItems } from '../utils/assessmentCopies'
+import { COPY_SLOTS, getMissingCopySlots, normalizeAssessmentItems, normalizeChecklistState, normalizeRegularItem } from '../utils/assessmentCopies'
 
 const FILES_BUCKET = 'aqat-attachments'
 const TEMPORARILY_DISABLED_MODES = new Set(['rest', 'database'])
@@ -35,7 +35,7 @@ export const emptyChecklist = () => ({
     {
       status: '',
       attachment: null,
-      attachments: item.marker === 'copies' ? Object.fromEntries(COPY_SLOTS.map(({ id }) => [id, null])) : {},
+      attachments: item.marker === 'copies' ? Object.fromEntries(COPY_SLOTS.map(({ id }) => [id, null])) : [],
       comments: '',
     },
   ]))),
@@ -104,7 +104,7 @@ const writeRecords = (records) => {
 
 const localRecord = (id) => {
   const record = readRecords()[id]
-  return record ? { ...record, items: normalizeAssessmentItems(record.items ?? {}) } : null
+  return record ? { ...record, items: normalizeChecklistState(normalizeAssessmentItems(record.items ?? {})) } : null
 }
 
 const updateLocalRecord = (id, changes) => {
@@ -197,7 +197,7 @@ const fetchChecklistRow = async (id) => {
 const rowToChecklist = (row) => ({
   id: row.id,
   header: row.data?.header ?? emptyChecklist().header,
-  items: normalizeAssessmentItems(row.data?.items ?? emptyChecklist().items),
+  items: normalizeChecklistState(normalizeAssessmentItems(row.data?.items ?? emptyChecklist().items)),
   footer: row.data?.footer ?? emptyChecklist().footer,
   status: row.status === 'submitted' ? 'submitted' : row.data?.reopenedAt ? 'reopened' : row.status,
   submittedAt: row.submitted_at,
@@ -245,7 +245,7 @@ export const listChecklists = async () => {
       submittedAt: row.submitted_at,
       updatedAt: row.updated_at,
       reopenedAt: row.data?.reopenedAt,
-      items: normalizeAssessmentItems(row.data?.items ?? {}),
+      items: normalizeChecklistState(normalizeAssessmentItems(row.data?.items ?? {})),
     }))
   }
 
@@ -264,7 +264,7 @@ export const listChecklists = async () => {
       submittedAt,
       updatedAt: updatedAt ?? submittedAt,
       reopenedAt,
-      items: normalizeAssessmentItems(items),
+      items: normalizeChecklistState(normalizeAssessmentItems(items)),
     }))
     .sort((first, second) => (second.submittedAt ?? '').localeCompare(first.submittedAt ?? ''))
 }
@@ -289,7 +289,7 @@ export const createChecklist = async (checklist) => {
     ...emptyChecklist(),
     ...checklist,
     header: { ...emptyChecklist().header, ...checklist.header },
-    items: normalizeAssessmentItems({ ...emptyChecklist().items, ...checklist.items }),
+    items: normalizeChecklistState(normalizeAssessmentItems({ ...emptyChecklist().items, ...checklist.items })),
     footer: { ...emptyChecklist().footer, ...checklist.footer },
     status: 'draft',
     updatedAt: new Date().toISOString(),
@@ -332,11 +332,17 @@ export const saveItem = async (id, itemId, item) => {
   if (isSupabaseMode(config)) {
     const save = async () => {
       const row = await fetchChecklistRow(id)
-      const previousItem = row.data?.items?.[itemId] ?? {}
+      const previousItem = normalizeRegularItem(row.data?.items?.[itemId] ?? {})
+      const normalizedItem = normalizeRegularItem(item)
+      const attachments = Array.isArray(normalizedItem.attachments)
+        ? normalizedItem.attachments
+        : Array.isArray(previousItem.attachments)
+          ? previousItem.attachments
+          : []
       const updatedItem = {
         ...previousItem,
-        ...item,
-        attachments: { ...(previousItem.attachments ?? {}), ...(item.attachments ?? {}) },
+        ...normalizedItem,
+        attachments,
       }
       const { data, error } = await supabase
         .from('checklists')
@@ -365,7 +371,7 @@ export const saveItem = async (id, itemId, item) => {
 
   const record = localRecord(id)
   return updateLocalRecord(id, {
-    items: { ...record.items, [itemId]: item },
+    items: { ...record.items, [itemId]: normalizeRegularItem(item) },
   })
 }
 
@@ -532,9 +538,17 @@ export const deleteChecklist = async (id) => {
 
     const paths = new Set(fileRows.map((file) => file.path))
     Object.values(row.data?.items ?? {}).forEach((item) => {
-      if (item?.attachment?.path) paths.add(item.attachment.path)
-      Object.values(item?.attachments ?? {}).forEach((attachment) => {
-        if (attachment?.path) paths.add(attachment.path)
+      if (Array.isArray(item?.attachments)) {
+        item.attachments.filter(Boolean).forEach((attachment) => {
+          if (attachment?.path) paths.add(attachment.path)
+        })
+      } else if (item?.attachment?.path) {
+        paths.add(item.attachment.path)
+      }
+      Object.values(item?.assessmentInstances ?? {}).forEach((instance) => {
+        Object.values(instance?.attachments ?? {}).forEach((attachment) => {
+          if (attachment?.path) paths.add(attachment.path)
+        })
       })
     })
 
