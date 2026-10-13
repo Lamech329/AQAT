@@ -38,7 +38,7 @@ test('portal routing follows the account role, not a selected portal', () => {
 
 test('every assessment instance requires a question paper and three marked copies', () => {
   assert.deepEqual(COPY_SLOTS.map(({ id }) => id), ['question_paper', 'lowest', 'median', 'highest'])
-  assert.equal(flatChecklistItems.find(({ id }) => id === '4').label, 'Assignments with solutions, question paper & 3 marked copies')
+  assert.equal(flatChecklistItems.find(({ id }) => id === '4').label, 'Assignments, question paper & 3 marked copies')
   assert.equal(flatChecklistItems.find(({ id }) => id === '4').marker, 'copies')
   assert.deepEqual(MARKED_ASSESSMENTS.map(({ id }) => id), ['4', '5', '6', '7', '9'])
 
@@ -118,7 +118,7 @@ test('N/A criteria are exempt from copy requirements and missing requirements ar
   const missing = getMissingChecklistRequirements(state, header)
   assert.deepEqual(missing, [{
     id: '7',
-    label: '7. Tests with solutions, question paper & 3 marked copies',
+    label: '7. Tests, question paper & 3 marked copies',
     missing: ['Test 2: question paper missing', 'Test 2: median copy missing'],
   }])
 
@@ -225,6 +225,7 @@ test('print summary includes criterion comments, instance slots, and footer feed
     },
     footer: { reviewerComments: 'Footer reviewer note', additionalNotes: 'Footer additional note' },
     adminFeedback: 'Admin follow-up',
+    adminComments: 'Admin-only comment',
   })
 
   assert.match(html, /Reviewed criterion comments/)
@@ -232,7 +233,7 @@ test('print summary includes criterion comments, instance slots, and footer feed
   assert.match(html, /Test 1<\/strong> — Question paper: question-paper\.pdf/)
   assert.match(html, /Footer reviewer note/)
   assert.match(html, /Footer additional note/)
-  assert.match(html, /Admin follow-up/)
+  assert.doesNotMatch(html, /Admin feedback|Admin comments|Admin follow-up|Admin-only comment/)
   assert.match(html, /Subject code:/)
   assert.match(html, /Lecturer:/)
   assert.match(html, /Department:/)

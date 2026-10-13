@@ -38,8 +38,6 @@ export function buildChecklistPrintHtml(record) {
   const feedback = [
     ['Reviewer comments', footer.reviewerComments],
     ['Additional notes', footer.additionalNotes],
-    ['Admin feedback', record.adminFeedback ?? footer.adminFeedback],
-    ['Admin comments', record.adminComments ?? footer.adminComments],
   ]
   const footerRows = feedback.map(([label, value]) => (
     `<p><strong>${escapeHtml(label)}:</strong> ${escapeHtml(value || '—')}</p>`
